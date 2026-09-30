@@ -1061,7 +1061,7 @@ void ftLib_LoadKirbyHats(u8 arg0)
     }
 }
 
-void ftLib_IsFramesRemaining(HSD_GObj* gobj)
+s32 ftLib_IsFramesRemaining(HSD_GObj* gobj)
 {
     return ftAnim_IsFramesRemaining(gobj);
 }
