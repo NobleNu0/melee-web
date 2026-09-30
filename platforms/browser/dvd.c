@@ -3,6 +3,7 @@
 #include <dolphin/dvd.h>
 #include <emscripten.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 // clang-format off
@@ -154,6 +155,20 @@ s32 DVDConvertPathToEntrynum(const char* path) {
 BOOL DVDFastOpen(s32 n, DVDFileInfo* f) {
     if (n < 0 || (unsigned)n >= entries || isdir(n))
         return false;
+    /* tools/browser/make_pak.py --vs-only leaves files out as offset 0,
+     * length 0; no file on the disc sits at offset 0. */
+    if (field(n, 1) == 0 && field(n, 2) == 0)
+        fprintf(stderr, "[dvd] %s is not in this bundle (make_pak.py --vs-only)\n", name(n));
+    /* MELEE_DVD_TRACE=1: name each file the first time it is opened, for
+     * auditing what a profile reads (tools/browser/make_pak.py). */
+    static int trace = -1;
+    static unsigned char* traced;
+    if (trace < 0)
+        trace = getenv("MELEE_DVD_TRACE") != NULL;
+    if (trace && (traced || (traced = calloc(entries, 1))) && !traced[n]) {
+        traced[n] = 1;
+        fprintf(stderr, "[dvd-open] %d %s\n", (int)n, name(n));
+    }
     memset(f, 0, sizeof(*f));
     f->startAddr = field(n, 1);
     f->length = field(n, 2);

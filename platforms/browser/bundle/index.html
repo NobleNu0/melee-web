@@ -1,0 +1,96 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Melee</title>
+<link rel="icon" href="data:,">
+<link rel="modulepreload" href="./pak-reader.mjs">
+<link rel="modulepreload" href="./controller-view.mjs">
+<link rel="preload" href="./melee_browser.wasm.gz" as="fetch" crossorigin>
+<style>
+  :root { color-scheme: dark; --fg: #eee; --dim: #8a8a8a; --accent: #e8b53c; --ok: #9c9;
+          --chip: #16161a; --chip-edge: #2c2c33; --key: #2a2a2e; --on: #fff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--fg); font: 14px/1.35 system-ui, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; }
+
+  /* The chip bar above the game: controls on the left, the live controller on the right. */
+  #bar { flex: none; display: flex; gap: 8px; justify-content: center; align-items: stretch; padding: 8px; }
+  .chip { background: var(--chip); border: 1px solid var(--chip-edge); border-radius: 12px; padding: 8px 12px; min-width: 0; }
+  #controls { display: grid; grid-template-columns: repeat(4, auto); gap: 4px 14px; align-content: center; font-size: 12px; color: var(--dim); }
+  #controls .k { white-space: nowrap; }
+  #controls .k b { color: var(--fg); font-weight: 600; margin-right: 4px; }
+  kbd { display: inline-block; min-width: 1.6em; text-align: center; background: var(--key); border: 1px solid #3a3a40; border-bottom-width: 2px;
+        border-radius: 4px; padding: 0 4px; color: var(--fg); font: 11px/1.5 ui-monospace, monospace; }
+  #pad { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 250px; }
+  #pad .cv-title { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  #pad[data-kind="none"] .cv-title { white-space: normal; text-align: center; }
+  #pad .cv-holder svg { display: block; width: 220px; height: 120px; }
+  #side { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; gap: 6px; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  #side button { background: none; border: 1px solid #444; color: var(--dim); border-radius: 6px; padding: 2px 8px; cursor: pointer; font: inherit; }
+  #stats { color: var(--ok); }
+
+  /* Controller drawing (controller-view.mjs). */
+  .cv-body { fill: #232329; stroke: #3b3b44; stroke-width: 1.5; }
+  .cv-gc-body { fill: #2b2340; stroke: #4a3d6b; }
+  .cv-label { fill: #d8d8d8; font-family: system-ui, sans-serif; font-weight: 700; pointer-events: none; }
+  .cv-btn { fill: #3a3a42; stroke: #55555f; stroke-width: 1; transition: fill 40ms; }
+  .cv-btn.cv-a { fill: #1f8a4c; } .cv-btn.cv-b { fill: #b3323a; } .cv-btn.cv-xy { fill: #7a7a86; }
+  .cv-btn.on { fill: var(--on); stroke: var(--accent); stroke-width: 2; }
+  .cv-btn.on + .cv-label, g:has(> .cv-btn.on) .cv-label { fill: #111; }
+  .cv-gate { fill: #17171b; stroke: #4b4b55; }
+  .cv-knob { fill: #9a9aa6; } .cv-knob.cv-c { fill: #d9b52a; }
+  .cv-knob.on { stroke: var(--accent); stroke-width: 2; }
+  .cv-trigger { fill: #17171b; stroke: #4b4b55; }
+  .cv-trigger-fill { fill: #6d6d7a; } .cv-trigger-fill.on { fill: var(--accent); }
+  .cv-dpad-mid { fill: #3a3a42; }
+
+  /* The game fills what is left, at 4:3. */
+  #stage { flex: 1; min-height: 0; display: grid; place-items: center; container-type: size; position: relative; }
+  canvas { display: block; width: min(100cqw, calc(100cqh * 4 / 3)); height: auto; aspect-ratio: 4 / 3; background: #000; outline: none; }
+
+  #overlay { position: absolute; inset: 0; display: grid; place-items: center; background: radial-gradient(#1b1b1f, #000 70%); padding: 16px; }
+  #overlay[hidden] { display: none; }
+  #panel { width: min(440px, 100%); text-align: center; }
+  h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: .02em; }
+  #status { min-height: 1.4em; color: var(--dim); }
+  #status.error { color: #f88; }
+  progress { width: 100%; height: 6px; margin: 14px 0; accent-color: var(--accent); }
+  #start { padding: 10px 36px; font: 600 18px system-ui, sans-serif; border: 0; border-radius: 6px; background: var(--accent); color: #111; cursor: pointer; }
+  #start:disabled { opacity: .35; cursor: default; }
+  #log { display: none; }
+  @media (max-width: 760px) { #controls { grid-template-columns: repeat(2, auto); } #pad { display: none; } }
+</style>
+<div id="bar">
+  <div id="controls" class="chip" aria-label="Keyboard controls">
+    <span class="k"><b>Stick</b><kbd>←↑↓→</kbd> / <kbd>WASD</kbd></span>
+    <span class="k"><b>A</b><kbd>X</kbd></span>
+    <span class="k"><b>X</b><kbd>C</kbd></span>
+    <span class="k"><b>L</b><kbd>Q</kbd></span>
+    <span class="k"><b>C-stick</b><kbd>IJKL</kbd></span>
+    <span class="k"><b>B</b><kbd>Z</kbd></span>
+    <span class="k"><b>Y</b><kbd>V</kbd></span>
+    <span class="k"><b>R</b><kbd>E</kbd></span>
+    <span class="k"><b>D-pad</b><kbd>TFGH</kbd></span>
+    <span class="k"><b>Start</b><kbd>Enter</kbd></span>
+    <span class="k"><b>Z</b><kbd>Tab</kbd></span>
+    <span class="k" style="color:var(--dim)">or a controller →</span>
+  </div>
+  <div id="pad" class="chip" aria-live="polite"></div>
+  <div id="side" class="chip"><span id="stats">&nbsp;</span><span id="caching"></span><button id="fullscreen" title="Fullscreen">⛶ Fullscreen</button></div>
+</div>
+<div id="stage">
+  <canvas id="canvas" width="960" height="720" tabindex="0"></canvas>
+  <div id="overlay">
+    <div id="panel">
+      <h1>Super Smash Bros. Melee</h1>
+      <div id="status">Loading…</div>
+      <progress id="progress" max="1"></progress>
+      <button id="start" disabled>Play</button>
+    </div>
+  </div>
+</div>
+<pre id="log"></pre>
+<script type="module" src="./app.mjs"></script>
+</html>

@@ -34,6 +34,81 @@ Any `MELEE_*` query parameter becomes an environment variable, so the knobs in
 `docs/testing.md` work as they do natively:
 `http://127.0.0.1:5190/?MELEE_BOOT_SCENE=vs&MELEE_DEBUG_VS=cpu4`.
 
+## Bundled web app (disc built in)
+
+`tools/browser/bundle.py` turns the engine and your own disc image into one
+self-contained folder that boots straight into the game, with no disc picker:
+
+```sh
+python3 tools/browser/build.py --jobs 8                  # the engine, once
+python3 tools/browser/bundle.py /path/to/GALE01.iso      # -> build/browser/bundle
+python3 build/browser/bundle/serve.py                    # http://127.0.0.1:5191/
+```
+
+`--vercel DIR` also writes a deploy folder and `DIR.zip` for Vercel Drop (or any
+static host): the bundle without `serve.py`, plus a `vercel.json` sending the
+COOP/COEP headers. `melee.pak` is LZMA-compressed there (`make_pak.py --lzma`,
+decoded by `bundle/lzma.mjs` in a worker pool) to stay under Hobby's 100 MB
+static upload limit, and a host that ignores Range requests gets the pak
+downloaded once, whole, instead of streamed.
+
+The folder is portable: copy it to any static host that supports HTTP Range
+requests (GitHub Pages, nginx, and so on; `coi-sw.js` supplies COOP/COEP where the
+host cannot), or run its own standard-library `serve.py` wherever Python 3 is.
+It holds game data from your disc, so it is for your own use: do not publish it.
+
+- The app always runs the VS-only profile (`MELEE_VS_ONLY=1`, `src/pc/profile.c`):
+  boot goes straight to the title (no memory-card scene, no movie), Start opens
+  VS character select as a 1v1 of port 1 against a level 9 CPU (the port 3 and
+  4 panels are hidden and cannot be opened), everything is unlocked, nothing is
+  saved, and the rules are 20XX's boot settings: 4 stocks, 8 minutes, items
+  off, friendly fire on. Stage select shows only Battlefield, Final
+  Destination, Dream Land, Yoshi's Story, Fountain of Dreams and Pokemon
+  Stadium, as a 3x2 grid of larger chips with Random beside it. Backing out of
+  CSS returns to the title. Adventure, Classic, trophies and the other modes
+  stay compiled but unreachable; Training is untouched for a later return.
+- `melee.pak` (`tools/browser/make_pak.py --vs-only`) is a compact virtual disc:
+  header, `main.dol`, a rewritten FST and the files back to back, in
+  raw-deflate blocks of 256 KiB. `dvd.c` reads it through the same disc offsets
+  as an `.iso`, so the engine is unchanged. Only the files the profile can read
+  go in (`VS_ONLY_FILES` in `make_pak.py`, from a `MELEE_DVD_TRACE=1` trace of
+  every reachable screen plus each fighter's and legal stage's data): 455 of
+  1,209 files; each fighter keeps its default costume and first alternate only
+  (`gm_GetNumCostumesForCKind` caps the count at 2 in the profile). About
+  119 MiB against a 1.46 GB disc. A left-out file keeps its
+  FST entry with offset and length 0, and `dvd.c` logs its name if anything
+  asks for it.
+- Shaders: `tools/browser/vs_pipeline_cache.db.gz` holds every GPU pipeline the
+  profile draws with (865, recorded from sessions covering every screen, fighter
+  and legal stage, merged by `merge_pipeline_caches.py`). The page installs it as
+  `/initial_pipeline_cache.db`; on a first visit aurora imports it and compiles
+  it all behind "Preparing graphics" (about a quarter of a second) instead of
+  skipping draws while pipelines compile during the first match.
+- The page shows a chip bar above the game: the keyboard controls, and the
+  first connected controller drawn live (`bundle/controller-view.mjs`) as a
+  GameCube controller or a generic gamepad, each control labelled with the
+  GameCube input aurora maps it to. Character select has no rules header,
+  since the rules are fixed.
+- Input: the keyboard and any controller the browser's Gamepad API exposes
+  with the standard mapping (XInput, Switch Pro, DualShock-class pads) drive
+  port 1 through SDL. The official GameCube adapter (WUP-028) is not a Gamepad
+  API device, and the browser build has no reader for it yet.
+- `bundle/pak-reader.mjs` serves `Module.readDisc` from it: blocks are fetched
+  with Range requests only when a read needs them, inflated with
+  `DecompressionStream`, and kept compressed in the Cache API, so a second visit
+  downloads nothing. After boot, `pak-prefetch.worker.mjs` copies the game data
+  (everything but the music) into the cache off the game's thread, backing off
+  while the game waits on a read; music streams with two blocks of read-ahead.
+  `?prefetch=0` turns the prefetch off.
+- The engine's wasm is stripped of its function names and shipped gzipped
+  (`melee_browser.wasm.gz`, 4.9 MiB); `app.mjs` inflates it with
+  `DecompressionStream` in `Module.instantiateWasm`, and passes bytes through
+  untouched when a host already served them with `Content-Encoding: gzip`. The page takes the same
+  `MELEE_*` query parameters as the disc-picker shell, plus `?res=WxH`.
+
+`MELEE_TEST_BUNDLE=1 MELEE_TEST_URL=http://127.0.0.1:5191/ node tests/browser/shell-e2e.mjs`
+runs the 60 fps cases against the bundle instead of a picked disc.
+
 ## Why the game is compiled differently here
 
 The decomp reads disc structures through
@@ -112,7 +187,14 @@ keyboard), `vs`, `vs-cpu4`, `classic` and `training`, and fails any case below
 58.5 fps or above a 33.4 ms p99 frame time. Boot-scene cases must also log the
 scene they asked for, so holding 60 fps on the wrong screen cannot pass.
 
-Known limitations: SDL's Emscripten audio backend uses the deprecated
-`ScriptProcessorNode`;
+Audio does not go through SDL here: `src/pc/audio.c` writes the mix into a
+ring in shared wasm memory and an `AudioWorklet` plays it on the browser's
+audio thread, at the game's own 32 kHz when the browser allows it (SDL's
+Emscripten backend uses the deprecated `ScriptProcessorNode`, on the main
+thread the game runs on). The canvas uses the browser's preferred format
+(`navigator.gpu.getPreferredCanvasFormat()`), which saves a conversion copy
+per frame.
+
+Known limitations:
 Safari and mobile browsers are untested here; the first launch on a machine
 compiles shaders for a few seconds behind the loading status.
