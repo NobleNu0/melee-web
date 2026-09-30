@@ -1,4 +1,8 @@
 #include "ground.h"
+#include <stdlib.h>
+#ifdef TARGET_PC
+#include "pc/pc.h"
+#endif
 
 #include <Runtime/platform.h>
 
@@ -1372,6 +1376,15 @@ static bool Ground_801C24F8(StKind stkind, u32 arg1, s32* arg2)
     int i;
     for (i = 0; i < stage_info.param->stage_param_count; i++) {
         phi_r30 = &phi_r30_0[i];
+#ifdef TARGET_PC
+        /* MELEE_DVD_TRACE (platforms/browser/dvd.c): every track this stage
+         * can pick, alternates included, for auditing what a profile needs. */
+        if (phi_r30->stkind == stkind && getenv("MELEE_DVD_TRACE") != NULL) {
+            OSReport("[bgm] stkind %d tracks %d %d %d %d alt-mode %d\n", stkind,
+                     (int) phi_r30->x4, (int) phi_r30->x8, (int) phi_r30->xC,
+                     (int) phi_r30->x10, (int) phi_r30->x14);
+        }
+#endif
         if (phi_r30->stkind == stkind) {
             if (arg1 & 4) {
                 temp_r25 = arg1 & 0x40;
@@ -1447,6 +1460,15 @@ static bool Ground_801C24F8(StKind stkind, u32 arg1, s32* arg2)
                     break;
                 }
             }
+#ifdef TARGET_PC
+            /* VS-only profile: always the stage's main track, never its
+             * alternate (random or forced by holding L at stage select); the
+             * bundled web app ships no alternate tracks. The rolls above
+             * still happen, so the random sequence is retail's. */
+            if (pc_vs_only()) {
+                arg1 = (arg1 & ~2) | 1;
+            }
+#endif
             if (arg1 & 0x10) {
                 stage_info.unk8C.b0 = 0;
                 if (arg1 & 1) {

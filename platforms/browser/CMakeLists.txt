@@ -12,6 +12,9 @@ add_compile_definitions(ENABLE_BACKEND_WEBGPU)
 # -fsigned-char: wasm32's default, stated as the top-level CMakeLists.txt does
 # for every native target (it returns before reaching that line for this one).
 add_compile_options(--use-port=emdawnwebgpu -pthread -fsigned-char)
+# Paths baked into the binary (__FILE__ in asserts) relative to the checkout,
+# so a published build does not carry the builder's directory layout.
+add_compile_options(-ffile-prefix-map=${CMAKE_SOURCE_DIR}/=)
 add_link_options(--use-port=emdawnwebgpu -pthread -sALLOW_MEMORY_GROWTH=1 -sASYNCIFY=1)
 add_subdirectory(${CMAKE_SOURCE_DIR}/extern/aurora ${CMAKE_BINARY_DIR}/aurora)
 # Same floating-point contract as the native build (top-level CMakeLists.txt).
@@ -26,7 +29,7 @@ target_compile_options(aurora_gd PRIVATE ${MELEE_FP_FLAGS})
 # GameCube adapter and file cache (pc_stubs.c). Keep in step with PC_SOURCES in
 # the top-level CMakeLists.txt.
 set(BROWSER_PC_SOURCES
- audio.c discfont.c gx.c input_poll.c keyboard.c misc.c os.c region.c stb_vorbis.c thp.c touch.c vi.c widescreen.c
+ audio.c discfont.c gx.c input_poll.c keyboard.c misc.c os.c profile.c region.c stb_vorbis.c thp.c touch.c vi.c widescreen.c
  android_compat.cpp music_stream.cpp textures.cpp
  net.c net_chat.c net_dht.c net_dht_item.c net_handshake.c net_identity.c net_lan.c net_match.c net_rank.c
  net_rank_session.c net_rank_store.c net_reliable.c net_sfx.c net_sim.c net_snapshot.c net_sync.c net_watchdog.c net_wire.c

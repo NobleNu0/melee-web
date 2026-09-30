@@ -209,6 +209,24 @@ void onEnterDebugVs(GameModeState* state)
             start->players[i].slot_type = Gm_PKind_Cpu;
         }
     }
+    /* MELEE_DEBUG_VS_CHARS=<ckind>,...: up to four CPUs of the given
+     * CharacterKinds, so a run can load any fighter (asset audits). */
+    if (getenv("MELEE_DEBUG_VS_CHARS") != NULL) {
+        const char* p = getenv("MELEE_DEBUG_VS_CHARS");
+        for (i = 0; i < 4 && *p != '\0'; i++) {
+            char* end;
+            long kind = strtol(p, &end, 0);
+            if (end == p || kind < 0 || kind >= CKind_Playable_Count) {
+                break;
+            }
+            start->players[i].ckind = (CharacterKind) kind;
+            start->players[i].slot_type = Gm_PKind_Cpu;
+            p = *end == ',' ? end + 1 : end;
+        }
+        for (; i < 4; i++) {
+            start->players[i].slot_type = Gm_PKind_NA;
+        }
+    }
     /* MELEE_DEBUG_VS_STOCKS=<n>: a stock match instead of an untimed time
      * one, so a run can end on GAME! with stocks the replay (src/pc/slp.c)
      * must carry. */

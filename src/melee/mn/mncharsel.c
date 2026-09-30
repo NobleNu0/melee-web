@@ -317,6 +317,69 @@ static struct CSSDoorsData2 data2 = {
 };
 
 #ifdef TARGET_PC
+#include "pc/pc.h"
+/* VS-only profile (src/pc/profile.c): 1v1 against a CPU, so ports 3 and 4
+ * have no panel at all. Every joint that draws one is hidden, again each
+ * frame because the door code re-animates them, and the clicks that would
+ * open them are refused (door_clicks and the join path below). */
+static bool pc_css_port_unused(int port)
+{
+    return pc_vs_only() && mnCharSel_804D6CF5 != 1 && port >= 2;
+}
+
+static void pc_css_hide_unused_panels(void)
+{
+    /* The four name-plate boxes are one joint with a DObj per port, in port
+     * order, so ports 3 and 4 hide by DObj rather than by joint; the rules
+     * header box is likewise one DObj of the top bar. */
+    enum { NAME_PLATES_JOINT = 0x55, TOP_BAR_JOINT = 0x1 };
+    HSD_JObj* plates = NULL;
+    int d;
+    size_t k;
+
+    if (!pc_css_port_unused(2) || mnCharSel_804D6CC0 == NULL) {
+        return;
+    }
+    for (d = 2; d < 4; d++) {
+        const CSSDoor* door = &mnCharSel_803F0DFC.doors[d];
+        const CSSTag* tag = &mnCharSel_803F0E8C[d];
+        u8 joints[] = {
+            door->emblem_joint,      door->costume_joint,
+            door->team_joint,        door->door_joint,
+            door->bg_joint,          door->player_indicator_joint,
+            door->slidername_joint,  door->cpuslider_joint,
+            door->cpuslider2_joint,  tag->x4,
+            tag->list_joint,         tag->name_jointl,
+            tag->x7,                 tag->kostar_text_joint,
+            data2.ko_stars[d].joint,
+        };
+        for (k = 0; k < sizeof(joints) / sizeof(joints[0]); k++) {
+            HSD_JObj* jobj = NULL;
+            lb_80011E24(mnCharSel_804D6CC0, &jobj, joints[k], -1);
+            if (jobj != NULL) {
+                HSD_JObjSetFlagsAll(jobj, JOBJ_HIDDEN);
+            }
+        }
+    }
+    lb_80011E24(mnCharSel_804D6CC0, &plates, NAME_PLATES_JOINT, -1);
+    if (plates != NULL) {
+        HSD_DObj* dobj = plates->u.dobj;
+        for (d = 0; dobj != NULL; d++, dobj = dobj->next) {
+            if (pc_css_port_unused(d)) {
+                HSD_DObjSetFlags(dobj, DOBJ_HIDDEN);
+            }
+        }
+    }
+    /* The rules header's box is the top bar's second DObj (the first is the
+     * bar and VS emblem); its text is hidden where it is created. */
+    lb_80011E24(mnCharSel_804D6CC0, &plates, TOP_BAR_JOINT, -1);
+    if (plates != NULL && plates->u.dobj != NULL && plates->u.dobj->next != NULL) {
+        HSD_DObjSetFlags(plates->u.dobj->next, DOBJ_HIDDEN);
+    }
+}
+#endif
+
+#ifdef TARGET_PC
 #include "pc/region.h"
 /* The character-select header and token counters are composed by index out
  * of SdSlChr, and the USA build's layout does not exist on PAL: there the
@@ -3054,6 +3117,11 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                                 {
                                     continue;
                                 }
+#ifdef TARGET_PC
+                                if (pc_css_port_unused(door)) {
+                                    continue;
+                                }
+#endif
                                 if ((mnCharSel_803F0DFC.doors[door]
                                          .is_hold_cpu_slider |
                                      mnCharSel_803F0DFC.doors[door]
@@ -3378,8 +3446,12 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                         f32 cy9 = cursor->x10;
                         if (cy9 > 0.2f && cy9 < 22.0f) {
                             u8 cport6 = cursor->x4;
-                            if (cport6 != 3 ||
-                                mnCharSel_804D6CB0->match_type != 1)
+                            if ((cport6 != 3 ||
+                                 mnCharSel_804D6CB0->match_type != 1)
+#ifdef TARGET_PC
+                                && !pc_css_port_unused(cport6)
+#endif
+                            )
                             {
                                 if (mnCharSel_803F0DFC.doors[cport6].p_kind ==
                                     3)
@@ -5266,6 +5338,12 @@ s32 mnCharSel_802640A0(void)
         text->font_size.x = 0.07f;
         text->font_size.y = 0.07f;
 #ifdef TARGET_PC
+        /* VS-only profile: the rules are fixed and cannot be changed, so the
+         * header that states them is not shown (pc_css_hide_unused_panels
+         * hides its box). */
+        if (pc_vs_only()) {
+            text->hidden = true;
+        }
         if (pc_region_pal) {
             HSD_SisLib_803A6368Raw(text, CSS_PAL_SCRATCH);
         } else {
@@ -5410,6 +5488,9 @@ s32 mnCharSel_802640A0(void)
     }
 
     mnCharSel_8025EE8C(mnCharSel_804D6CB0->match_type);
+#ifdef TARGET_PC
+    pc_css_hide_unused_panels();
+#endif
     PAD_STACK(0x20);
     return lbAudioAx_80023F28(gmMainLib_8015ECB0());
 }
@@ -5476,6 +5557,9 @@ void mnCharSel_Scene_OnFrame(void)
 
     PAD_STACK(8);
 
+#ifdef TARGET_PC
+    pc_css_hide_unused_panels();
+#endif
     mnCharSel_804D6CEC += 1;
     if (mnCharSel_804D6CF6 <= 1) {
         cache = &lbDvd_GetPreloadCacheScene()->game_cache;

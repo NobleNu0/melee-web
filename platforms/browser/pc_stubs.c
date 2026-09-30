@@ -20,7 +20,7 @@
 /* Desktop launcher preferences; defaults match launcher_data.hpp. MELEE_UCF is
  * the one the launcher also reads from the environment (launcher.cpp). */
 bool pc_is_unlock_all_enabled(void) {
-    return false;
+    return pc_vs_only();
 }
 bool pc_is_frozen_stadium_enabled(void) {
     return false;

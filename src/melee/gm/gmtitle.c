@@ -12,6 +12,7 @@
 #ifdef TARGET_PC
 #include <stdlib.h>
 #include "gmboot.h"
+#include "pc/pc.h"
 #include "pc/net.h"
 #endif
 #include <melee/db/db.h>
@@ -292,7 +293,10 @@ void gm_Scene_Title_OnFrame(void)
     }
     frame_count++;
 #ifdef TARGET_PC
-    if (getenv("MELEE_NO_ATTRACT") != NULL || pc_boot_scene() == GM_ONLINE) {
+    /* VS-only profile: no attract loop (it plays the opening movie and demo
+     * matches, neither of which the bundled web app ships). */
+    if (getenv("MELEE_NO_ATTRACT") != NULL || pc_boot_scene() == GM_ONLINE ||
+        pc_vs_only()) {
         if (frame_count > 600) {
             frame_count = 0;
         }
@@ -389,6 +393,10 @@ void gm_Scene_Title_OnEnter(void* unused)
     gmTitle_801A165C();
 
     lbAudioAx_80027648();
+#ifdef TARGET_PC
+    /* The attract demo never runs in the VS-only profile; do not load it. */
+    if (!pc_vs_only())
+#endif
     gm_PreloadTitleDemo();
 
     fn_801A1498_inline();

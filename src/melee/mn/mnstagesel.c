@@ -6,6 +6,7 @@
 #include "inlines.h"
 #include "mnmain.h"
 #include <melee/gm/gm_unsplit.h>
+#include <melee/gr/forward.h>
 #include <melee/gm/gmmain_lib.h>
 #include <melee/lb/lb_00B0.h>
 #include <melee/lb/lb_013B.h>
@@ -122,6 +123,7 @@ struct StageSelUserData {
 
 #ifdef TARGET_PC
 #include "pc/net.h"
+#include "pc/pc.h"
 #include "pc/net_lan.h"
 #include "pc/net_rank_session.h"
 #include <sysdolphin/baselib/sislib.h>
@@ -453,6 +455,85 @@ void fn_80259D84(HSD_GObj* gobj)
         break;
     }
 }
+
+#ifdef TARGET_PC
+/* VS-only profile: the six legal stages as a 3x2 grid of larger chips,
+ * Yoshi's Story, Fountain of Dreams and Pokemon Stadium over Battlefield,
+ * Final Destination and Dream Land (the rows they have on the original
+ * screen). The icons are animated into place, so this runs every frame and
+ * nudges each chip until it sits on its grid cell; the hover extents and the
+ * cursor frame are scaled with the chips. */
+static void pc_sss_grid_proc(HSD_GObj* gobj)
+{
+    static const u8 order[6] = { St_Kind_Story,  St_Kind_Izumi, St_Kind_PStadium,
+                                 St_Kind_Battle, St_Kind_Last,  St_Kind_OldPupupu };
+    static f32 base[30][3]; /* original xC, x10, x14 */
+    static bool saved;
+    /* Menu units: the grid's centre and cell pitch, the chips' size relative
+     * to a regular chip, and the Random chip's spot in the left panel. The
+     * chips' lower edge stays above the stage-name banner. */
+    const f32 cx = 4.8F, cy = 6.3F, dx = 13.5F, dy = 12.0F, size = 1.75F;
+    const f32 rx = -21.0F, ry = 6.3F;
+    int n, i;
+    (void) gobj;
+
+    if (!saved) {
+        for (i = 0; i < 30; i++) {
+            base[i][0] = mnStageSel_803F06D0[i].xC;
+            base[i][1] = mnStageSel_803F06D0[i].x10;
+            base[i][2] = mnStageSel_803F06D0[i].x14;
+        }
+        saved = true;
+    }
+    /* The Random chip moves to the left panel, clear of the grid. */
+    {
+        HSD_JObj* random = mnStageSel_803F06D0[0x1D].x0;
+        if (random != NULL) {
+            Vec3 w;
+            if (random->robj != NULL && random->parent == NULL) {
+                random->robj = NULL;
+            }
+            lb_8000B1CC(random, NULL, &w);
+            HSD_JObjSetTranslateX(random, HSD_JObjGetTranslationX(random) + rx - w.x);
+            HSD_JObjSetTranslateY(random, HSD_JObjGetTranslationY(random) + ry - w.y);
+        }
+    }
+    for (n = 0; n < 6; n++) {
+        struct StageListInfo* e = NULL;
+        Vec3 w;
+        f32 k;
+        for (i = 0; i < NUM_STAGES; i++) {
+            if (mnStageSel_803F06D0[i].stkind == order[n] &&
+                mnStageSel_803F06D0[i].x8 >= 2 && mnStageSel_803F06D0[i].x0 != NULL)
+            {
+                e = &mnStageSel_803F06D0[i];
+                break;
+            }
+        }
+        if (e == NULL) {
+            continue;
+        }
+        /* x14 is the chip's size relative to a regular one (0.8 for the
+         * small bottom-row chips); scale all six to the same size. */
+        /* The bottom-row chips are roots pinned to a menu joint by a
+         * position constraint (lb_8000C1C0), which would undo any move. */
+        if (e->x0->robj != NULL && e->x0->parent == NULL) {
+            e->x0->robj = NULL;
+        }
+        k = size / base[i][2];
+        e->xC = base[i][0] * k;
+        e->x10 = base[i][1] * k;
+        e->x14 = e->x18 = size;
+        HSD_JObjSetScaleX(e->x0, k);
+        HSD_JObjSetScaleY(e->x0, k);
+        lb_8000B1CC(e->x0, NULL, &w);
+        HSD_JObjSetTranslateX(e->x0, HSD_JObjGetTranslationX(e->x0) +
+                                         (cx + (n % 3 - 1) * dx) - w.x);
+        HSD_JObjSetTranslateY(e->x0, HSD_JObjGetTranslationY(e->x0) +
+                                         (cy + (n < 3 ? dy : -dy) / 2) - w.y);
+    }
+}
+#endif
 
 static void do_anim(HSD_JObj* jobj, int frame)
 {
@@ -819,6 +900,13 @@ void mnStageSel_Scene_OnEnter(void* arg0)
         for (i = 0; i < 0x1D; i++) {
             mnStageSel_803F06D0[i].x8 =
                 gm_80164430(mnStageSel_803F06D0[i].stkind) ? 2 : 1;
+#ifdef TARGET_PC
+            /* VS-only profile: a stage that is not tournament-legal is
+             * hidden (0: no icon, cursor skips it) rather than shown locked. */
+            if (pc_vs_only() && mnStageSel_803F06D0[i].x8 == 1) {
+                mnStageSel_803F06D0[i].x8 = 0;
+            }
+#endif
         }
 
         for (i = 0; i <= 0xA; i++) {
@@ -918,6 +1006,12 @@ void mnStageSel_Scene_OnEnter(void* arg0)
             do_anim(temp_r22_8, 2);
             mnStageSel_803F06D0[0x1D].x0 = temp_r22_8;
         }
+#ifdef TARGET_PC
+        if (pc_vs_only()) {
+            HSD_GObj* grid = GObj_Create(4, 5, 0x80);
+            HSD_GObj_SetupProc(grid, pc_sss_grid_proc, 4);
+        }
+#endif
 
         for (i = 0x11; i <= 0x12; i++) {
             HSD_JObj* jobj;

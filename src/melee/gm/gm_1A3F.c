@@ -23,6 +23,13 @@
 #include <sysdolphin/baselib/devcom.h>
 #include <sysdolphin/baselib/sislib.h>
 #include <sysdolphin/baselib/video.h>
+#ifdef TARGET_PC
+#include "gmvsmelee.h"
+#include "pc/pc.h"
+#include <melee/ft/forward.h>
+#include <melee/mn/forward.h>
+#include <melee/pl/forward.h>
+#endif
 
 struct routingInfo {
     u8 curr_mode;     ///< ::GameModeKind
@@ -374,6 +381,37 @@ u8 runGameMode(u8 mode_kind)
     return state_machine.routing.pending_mode;
 }
 
+#ifdef TARGET_PC
+/* VS-only profile (src/pc/profile.c): the rules screen is unreachable, so the
+ * rules every match uses are set here, as 20XX sets them on boot: 4 stocks,
+ * 8 minutes, no items, friendly fire on. Character select opens set up for
+ * one player against a level 9 CPU; ports 1 and 2 are the standard (neutral)
+ * spawn points. Nothing is saved, so this runs on every boot. */
+static void pc_vs_only_defaults(void)
+{
+    GameRules* rules = gmMainLib_GetGameRules();
+    VsModeData* vs = gmVsMelee_GetVsData();
+    int i;
+
+    rules->mode = Mode_Stock;
+    rules->stock_count = 4;
+    rules->stock_time_limit = 8;
+    rules->friendly_fire = 1;
+    rules->handicap = 0;
+    rules->damage_ratio = 10;
+    rules->bgm = 0x34; /* menu01, the only menu track the web app ships */
+    gmMainLib_GetGamePrefs()->item_freq = (u8) -1;
+
+    vs->start.players[0].slot_type = Gm_PKind_Human;
+    vs->start.players[1].slot_type = Gm_PKind_Cpu;
+    vs->start.players[1].ckind = CKind_Fox;
+    vs->start.players[1].cpu_level = 9;
+    for (i = 2; i < GM_MAX_PLAYERS; i++) {
+        vs->start.players[i].slot_type = Gm_PKind_NA;
+    }
+}
+#endif
+
 /// UnclePunch: Scene_Main
 void gm_801A4510(void)
 {
@@ -412,6 +450,16 @@ void gm_801A4510(void)
          * GM_BOOT skipped nothing has, and gm_Mode_Classic_OnLoad's trophy
          * read fails with "lbHeap: alloc ... REFUSED: status=1". */
         lbHeap_80015900();
+    } else if (pc_vs_only()) {
+        /* VS-only profile: straight to the title. GM_BOOT is the memory-card
+         * scene and the opening movie; with nothing saved there is no card
+         * to check, and no gm_SetGameModeOverride to divert into GM_MEMCARD
+         * later. Heap 0 as for MELEE_BOOT_SCENE above. */
+        state_machine.routing.curr_mode = GM_TITLE;
+        lbHeap_80015900();
+    }
+    if (pc_vs_only()) {
+        pc_vs_only_defaults();
     }
 #endif
     state_machine.routing.prev_mode = GM_COUNT;

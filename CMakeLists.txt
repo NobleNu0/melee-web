@@ -195,6 +195,7 @@ set(PC_SOURCES
         src/pc/main.c
         src/pc/misc.c
         src/pc/os.c
+        src/pc/profile.c
         src/pc/region.c
         src/pc/slp.c
         src/pc/slp_format.c

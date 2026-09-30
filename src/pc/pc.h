@@ -88,6 +88,10 @@ bool pc_is_frozen_stadium_enabled(void);
 bool pc_is_free_camera_enabled(void);
 bool pc_is_ucf_enabled(void);
 int pc_get_hud_mode(void);
+/* VS-only profile, src/pc/profile.c: MELEE_VS_ONLY=1 boots to the title and
+ * Start goes straight to VS; only tournament-legal stages (StKind values). */
+bool pc_vs_only(void);
+bool pc_is_legal_stage(unsigned stkind);
 float pc_get_music_volume(void);
 float pc_get_sfx_volume(void);
 /* Build version string ("v0.1.8-beta"), src/pc/version.cpp. */

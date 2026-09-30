@@ -2448,6 +2448,12 @@ bool gm_80164330(s32 arg0)
 
 bool gm_80164430(u16 arg0)
 {
+    /* VS-only profile: the tournament-legal stages are the only stages there
+     * are (the bundled web app ships no data for the rest), so stage select,
+     * its Random pick and the title demo all see just those. */
+    if (pc_vs_only()) {
+        return pc_is_legal_stage(arg0);
+    }
     if (pc_is_unlock_all_enabled()) {
         return true;
     }
@@ -2559,7 +2565,7 @@ int gm_801647F8(u8 arg0)
 /// Is a specific character unlocked?
 bool gm_IsCKindUnlocked(u8 ckind)
 {
-    if (pc_is_unlock_all_enabled()) {
+    if (pc_is_unlock_all_enabled() || pc_vs_only()) {
         return true;
     }
     u16* unlocked_chars_bitmask = gmMainLib_GetUnlockedCharactersBitmaskPtr();
@@ -2617,7 +2623,7 @@ void gm_80164A0C(u8 ckind)
 /// Are all unlockable characters unlocked?
 bool gm_80164ABC(void)
 {
-    if (pc_is_unlock_all_enabled()) {
+    if (pc_is_unlock_all_enabled() || pc_vs_only()) {
         return true;
     }
     u16* unlockable_character_bitfield =
@@ -4401,6 +4407,12 @@ u8 gm_GetNumCostumesForCKind(u8 ckind)
     }
     if (ckind >= ARRAY_SIZE(lbl_803D51A0)) {
         return 0;
+    }
+    /* VS-only profile: the default costume and the first alternate only (the
+     * bundled web app ships no other costume files); every costume choice,
+     * character select's included, wraps on this count. */
+    if (pc_vs_only() && lbl_803D51A0[ckind].ncolors > 2) {
+        return 2;
     }
     return lbl_803D51A0[ckind].ncolors;
 }

@@ -18,6 +18,9 @@
 #include <melee/lb/lbdvd.h>
 #include <melee/lb/lbtime.h>
 #include <melee/mn/types.h>
+#ifdef TARGET_PC
+#include "pc/pc.h"
+#endif
 
 /* 1A5360 */ static u8 findSmallestLoser(MatchEnd*);
 /* 4807B0 */ CSSData gmVsMelee_CssData;
@@ -130,6 +133,14 @@ void gmVsMelee_ExitCss(GameModeState* state, VsModeData* vs)
 {
     CSSData* css = gm_GetGameModeStateExitData(state);
     if (css->pending_scene_change == CSSPendingSceneChange_2) {
+#ifdef TARGET_PC
+        /* VS-only profile: there is no main menu; backing out of character
+         * select returns to the title screen. */
+        if (pc_vs_only()) {
+            gm_ChangeGameModeAfterCurrentScene(GM_TITLE);
+            return;
+        }
+#endif
         gm_ChangeGameModeAfterCurrentScene(GM_MENU);
         return;
     }
@@ -291,6 +302,16 @@ void gmVsMelee_ExitResults(GameModeState* state, VsModeData* vs, u8 state_id)
 
     gmVsMelee_UpdateKOCounts(ko, match_end);
 
+#ifdef TARGET_PC
+    /* VS-only profile: no records, new challengers, stage unlocks or trophy
+     * prizes after a match; everything is unlocked, nothing is saved, and
+     * the bundled web app ships no trophy data. Straight back to CSS. */
+    if (pc_vs_only()) {
+        lbCardGame_SetupArchive();
+        gm_SetNextGameModeStateId(state_id);
+        return;
+    }
+#endif
     if (gmVsMelee_WasAnyPlayerHuman(match_end)) {
         gm_8016247C(gm_801688AC(match_end));
         if (state[1].id != GM_GAMEMODESTATE_TERMINATE) {

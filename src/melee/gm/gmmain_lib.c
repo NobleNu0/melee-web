@@ -884,7 +884,10 @@ void gmMainLib_8015ECBC(void)
 
     GameRules* rules = &gmMainLib_804D3EE0->x1850;
     if (gm_80164600() && gm_80164ABC()) {
-        if (HSD_Randi(4) != 0) {
+        /* VS-only profile: menu01 only (the bundled web app ships no
+         * alternate menu track); the roll is kept so the random sequence is
+         * the one retail has. */
+        if (HSD_Randi(4) != 0 || pc_vs_only()) {
             rules->bgm = 0x34;
         } else {
             rules->bgm = 0x36;

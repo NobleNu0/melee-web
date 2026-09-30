@@ -7,6 +7,7 @@
 #include <melee/db/db.h>
 #ifdef TARGET_PC
 #include "gmboot.h"
+#include "pc/pc.h"
 #endif
 #include <melee/lb/lbdvd.h>
 #include <sysdolphin/baselib/controller.h>
@@ -61,6 +62,11 @@ void onExit(GameModeState* scene)
             gm_SetPendingGameMode(GM_OPENING_MV);
         }
 #ifdef TARGET_PC
+    } else if ((*buttons & HSD_PAD_START) && pc_vs_only()) {
+        /* VS-only profile: Start goes straight to VS character select, past
+         * the main menu and the unlock/challenger check (everything is
+         * unlocked already). */
+        gm_SetPendingGameMode(GM_VS);
     } else if ((*buttons & HSD_PAD_START) && getenv("MELEE_DEBUG_VS") != NULL) {
         /* MELEE_DEBUG_VS=1|cpu: Start at the title jumps straight into the
          * debug VS match (Link vs Mario) with no menus, for netplay and
@@ -75,7 +81,9 @@ void onExit(GameModeState* scene)
         }
     } else {
 #ifdef TARGET_PC
-        if (getenv("MELEE_NO_ATTRACT") != NULL || pc_boot_scene() == GM_ONLINE) {
+        if (getenv("MELEE_NO_ATTRACT") != NULL || pc_boot_scene() == GM_ONLINE ||
+            pc_vs_only())
+        {
             gm_SetPendingGameMode(GM_TITLE);
             gm_SetNewGameModePending();
             return;
