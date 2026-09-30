@@ -91,10 +91,14 @@ export function datagramRing(link, base) {
 
 /**
  * The page's netplay link. `signalUrl` is the Worker's origin
- * (wss://… or https://…); without one, online play is off.
+ * (wss://… or https://…); without one, online play is off. `roomCode`
+ * overrides the code a host waits under.
  */
-export function createNetplay({ signalUrl, log = console.log, onChange = () => {}, storage } = {}) {
-  const code = localCode(storage);
+export function createNetplay({ signalUrl, log = console.log, onChange = () => {}, storage, roomCode } = {}) {
+  // A host normally waits under this browser's own code; one opened from an
+  // invite the Discord app made (?online=host&code=, netplay-worker's /melee)
+  // hosts the code that invite already names.
+  const code = normalizeCode(roomCode) ?? localCode(storage);
   const base = signalUrl ? new URL(signalUrl) : null;
   let state = LINK.IDLE;
   let reason = '';
@@ -157,6 +161,7 @@ export function createNetplay({ signalUrl, log = console.log, onChange = () => {
     clearTimeout(directTimer);
     if (path !== how) log(`netplay: link open (${how === 'direct' ? 'direct WebRTC' : 'relayed by the server'})`);
     path = how;
+    if (how === 'direct') watchRtt();
     set(LINK.OPEN);
   }
 
@@ -242,6 +247,7 @@ export function createNetplay({ signalUrl, log = console.log, onChange = () => {
   function teardown() {
     clearTimeout(directTimer);
     clearInterval(pingTimer);
+    clearInterval(rttTimer);
     dc?.close();
     pc?.close();
     if (ws && ws.readyState <= WebSocket.OPEN) ws.close(1000);
@@ -322,18 +328,23 @@ export function createNetplay({ signalUrl, log = console.log, onChange = () => {
     if (state !== LINK.IDLE) set(LINK.IDLE);
   }
 
-  // Round trip for the status chip, from the selected ICE candidate pair.
-  setInterval(async () => {
-    if (!pc || path !== 'direct') return;
-    try {
-      for (const stat of (await pc.getStats()).values()) {
-        if (stat.type === 'candidate-pair' && stat.nominated && stat.currentRoundTripTime != null) {
-          rttMs = Math.round(stat.currentRoundTripTime * 1000);
-          onChange(api.info());
+  // Round trip for the status chip, from the selected ICE candidate pair;
+  // runs only while a direct link is up (opened, torn down with it).
+  let rttTimer = 0;
+  function watchRtt() {
+    clearInterval(rttTimer);
+    rttTimer = setInterval(async () => {
+      if (!pc || path !== 'direct') return;
+      try {
+        for (const stat of (await pc.getStats()).values()) {
+          if (stat.type === 'candidate-pair' && stat.nominated && stat.currentRoundTripTime != null) {
+            rttMs = Math.round(stat.currentRoundTripTime * 1000);
+            onChange(api.info());
+          }
         }
-      }
-    } catch {}
-  }, 2000);
+      } catch {}
+    }, 2000);
+  }
 
   const api = {
     enabled: !!base,

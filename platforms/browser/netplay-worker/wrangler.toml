@@ -7,6 +7,10 @@ compatibility_date = "2026-09-01"
 [vars]
 # Pages allowed to use this Worker, comma separated ("*" = any).
 ALLOWED_ORIGINS = "http://127.0.0.1:5191,http://localhost:5191"
+# The Discord app's /melee command (src/discord.mjs): its public key (Developer
+# Portal -> General Information; public by design) and where the game runs.
+DISCORD_PUBLIC_KEY = ""
+SITE_URL = ""
 
 # Optional Cloudflare Realtime TURN, for players whose networks cannot open a
 # direct WebRTC link (the WebSocket relay covers them otherwise):
