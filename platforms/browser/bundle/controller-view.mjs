@@ -152,7 +152,7 @@ export function startControllerView(root, { getGamepads = () => navigator.getGam
       if (current || !title.textContent) {
         current = null;
         holder.replaceChildren();
-        title.textContent = 'No controller: plug one in and press any button';
+        title.textContent = 'No controller: plug one in and press a button';
         root.dataset.kind = 'none';
       }
     } else {

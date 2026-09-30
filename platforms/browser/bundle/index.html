@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Melee</title>
+<!-- Filled in by tools/browser/bundle.py: crash reporting (empty = off) and this build's id. -->
+<meta name="sentry-dsn" content="">
+<meta name="melee-release" content="dev">
 <link rel="icon" href="data:,">
 <link rel="modulepreload" href="./pak-reader.mjs">
 <link rel="modulepreload" href="./controller-view.mjs">
@@ -27,6 +30,7 @@
   #pad .cv-title { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   #pad[data-kind="none"] .cv-title { white-space: normal; text-align: center; }
   #pad .cv-holder svg { display: block; width: 220px; height: 120px; }
+  #gcadapter { font: inherit; font-size: 11px; margin-bottom: 4px; background: none; border: 1px solid #555; color: var(--fg); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
   #side { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; gap: 6px; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
   #side button { background: none; border: 1px solid #444; color: var(--dim); border-radius: 6px; padding: 2px 8px; cursor: pointer; font: inherit; }
   #stats { color: var(--ok); }
@@ -77,8 +81,8 @@
     <span class="k"><b>Z</b><kbd>Tab</kbd></span>
     <span class="k" style="color:var(--dim)">or a controller →</span>
   </div>
-  <div id="pad" class="chip" aria-live="polite"></div>
-  <div id="side" class="chip"><span id="stats">&nbsp;</span><span id="caching"></span><button id="fullscreen" title="Fullscreen">⛶ Fullscreen</button></div>
+  <div id="pad" class="chip" aria-live="polite"><button id="gcadapter" hidden title="The official Wii U / Switch GameCube controller adapter (Chrome or Edge)">Connect GameCube adapter</button></div>
+  <div id="side" class="chip"><span id="stats">&nbsp;</span><span id="caching"></span><span id="reports" hidden title="If the game crashes, an anonymous report (the error, recent log, browser, OS and GPU; no personal data) is sent to Sentry so it can be fixed.">crash reports on</span><button id="fullscreen" title="Fullscreen">⛶ Fullscreen</button></div>
 </div>
 <div id="stage">
   <canvas id="canvas" width="960" height="720" tabindex="0"></canvas>

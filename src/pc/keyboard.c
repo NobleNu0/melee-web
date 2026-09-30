@@ -338,6 +338,11 @@ static void publish_locked(void) {
  * happens once per pad-alarm period (1/60 s cap, lb_0195.c:84-86), so a press
  * shorter than a frame survives to exactly one read and no further. */
 void pc_keyboard_apply(void) {
+#ifdef __EMSCRIPTEN__
+    /* The browser runs no 1 kHz input thread (os.c): take the newest report the
+     * page's WebHID adapter delivered here, once per frame, before applying. */
+    pc_gcadapter_poll();
+#endif
     pc_gcadapter_apply();
     const bool focused = SDL_GetKeyboardFocus() != NULL;
     lock_keys();

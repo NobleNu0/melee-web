@@ -2,11 +2,11 @@
 /*
  * Native-only pieces of src/pc that the browser platform replaces.
  *
- * The desktop launcher (launcher.cpp), the libusb GameCube adapter
- * (gcadapter.c) and the archive file cache (file_cache.cpp) have no browser
- * counterpart: settings come from the hosting page through the environment,
- * pads arrive through SDL, and disc reads are cached by
- * disc-cache.mjs. Everything else in src/pc is compiled unchanged.
+ * The desktop launcher (launcher.cpp) and the archive file cache
+ * (file_cache.cpp) have no browser counterpart: settings come from the hosting
+ * page through the environment, and disc reads are cached by the page.
+ * (gcadapter.c is compiled here, reading the adapter the page opens through
+ * WebHID.) Everything else in src/pc is compiled unchanged.
  */
 #include <stdbool.h>
 #include <stddef.h>
@@ -57,25 +57,6 @@ uint64_t pc_install_id(void) {
 }
 const char* pc_app_rev(void) {
     return "browser";
-}
-
-/* libusb GameCube adapter. */
-void pc_gcadapter_init(void) {}
-void pc_gcadapter_poll(void) {}
-void pc_gcadapter_apply(void) {}
-bool pc_gcadapter_status(int port, struct PADStatus* out) {
-    (void)port;
-    (void)out;
-    return false;
-}
-bool pc_gcadapter_raw(int port, uint8_t raw[6], bool* wireless) {
-    (void)port;
-    (void)raw;
-    (void)wireless;
-    return false;
-}
-uint64_t pc_gcadapter_report_count(void) {
-    return 0;
 }
 
 /* Archive cache and background prewarm: the page owns disc caching. */

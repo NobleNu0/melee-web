@@ -91,8 +91,20 @@ It holds game data from your disc, so it is for your own use: do not publish it.
   since the rules are fixed.
 - Input: the keyboard and any controller the browser's Gamepad API exposes
   with the standard mapping (XInput, Switch Pro, DualShock-class pads) drive
-  port 1 through SDL. The official GameCube adapter (WUP-028) is not a Gamepad
-  API device, and the browser build has no reader for it yet.
+  port 1 through SDL. The official Wii U / Switch GameCube adapter (WUP-028,
+  or a Mayflash in Wii U mode) is not a Gamepad API device: in Chrome and Edge
+  the page opens it through WebHID (`bundle/gc-adapter.mjs`; "Connect GameCube
+  adapter", once per site) and hands its reports to `src/pc/gcadapter.c`,
+  which reads them exactly as the native build does: raw 8-bit axes, adapter
+  slot N = port N, rumble. On Windows the adapter must still use its HID
+  driver (not WinUSB from Zadig); on Linux Chrome needs hidraw access.
+- Crash reports: `bundle.py --sentry-dsn DSN` (or `MELEE_SENTRY_DSN`) turns on
+  Sentry reporting (`bundle/telemetry.mjs`, the SDK self-hosted in
+  `bundle/vendor/`). Engine aborts arrive titled by their PANIC location with
+  the wasm stack and the recent log; each report is tagged with the browser,
+  OS, GPU, CPU, memory and exact build (`melee-web@<engine>-<pak>`). No IP
+  address or other personal data, no sessions, tracing or replays. Without a
+  DSN nothing is loaded or sent.
 - `bundle/pak-reader.mjs` serves `Module.readDisc` from it: blocks are fetched
   with Range requests only when a read needs them, inflated with
   `DecompressionStream`, and kept compressed in the Cache API, so a second visit

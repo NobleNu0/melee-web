@@ -65,6 +65,7 @@ int main(int argc, char** argv) {
     (void)info;
     extern void browser_prepare_graphics(void);
     browser_prepare_graphics();
+    pc_gcadapter_init(); /* before the input thread: registers the WebHID buffer */
     pc_platform_init();
     aurora_card_set_present(true);
     return melee_main();

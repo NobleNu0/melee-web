@@ -5,8 +5,17 @@
 import { openPak } from './pak-reader.mjs';
 import { checkGraphics } from './gpu-preflight.mjs';
 import { startControllerView } from './controller-view.mjs';
+import { createGcAdapter, webHidAvailable } from './gc-adapter.mjs';
+import {
+  reportEngineAbort, reportEngineWarning, reportPageError, setSessionContext, startTelemetry, telemetryDsn,
+} from './telemetry.mjs';
+
+// Crash reports, when this build has a Sentry DSN (bundle.py --sentry-dsn):
+// started first so a failure during boot is reported too.
+startTelemetry();
 
 const $ = (id) => document.getElementById(id);
+$('reports').hidden = !telemetryDsn();
 
 // The bundle ships the engine and the shader seed gzipped (tools/browser/bundle.py)
 // to stay small. A host that adds its own Content-Encoding hands the browser's
@@ -22,17 +31,23 @@ async function fetchGzipped(url) {
 Error.stackTraceLimit = 64; // engine aborts log a stack; keep it whole
 const params = new URLSearchParams(location.search);
 const lines = [];
+let lastPanic = '';
 function log(text) {
-  lines.push(String(text));
+  text = String(text);
+  lines.push(text);
   if (lines.length > 400) lines.shift();
   $('log').textContent = lines.join('\n');
   console.log(text);
+  // The assert location a crash report is titled and grouped by.
+  if (text.startsWith('PANIC ')) lastPanic = text.trim();
+  if (/ is not in this bundle/.test(text)) reportEngineWarning(text);
 }
 function status(text, { error = false } = {}) {
   $('status').textContent = text;
   $('status').classList.toggle('error', error);
 }
-function fail(error) {
+function fail(error, { reported = false } = {}) {
+  if (!reported) reportPageError(error);
   status(error.message || String(error), { error: true });
   $('progress').hidden = true;
   $('overlay').hidden = false;
@@ -84,7 +99,10 @@ window.Module = {
   print: log,
   printErr: log,
   onFrame,
-  onAbort: (reason) => fail(Error(`Engine stopped: ${reason}`)),
+  onAbort: (reason) => {
+    reportEngineAbort(reason, lastPanic, { frames: frames.count, log: lines.slice(-60).join('\n') });
+    fail(Error(`Engine stopped: ${reason}`), { reported: true });
+  },
   onGraphicsPreparation: (done, total) => {
     $('overlay').hidden = done === total;
     status(done === total ? 'Starting…' : `Preparing graphics… ${Math.floor(done * 100 / total)}%`);
@@ -141,8 +159,28 @@ function toggleFullscreen() {
   $('canvas').focus();
 }
 $('fullscreen').addEventListener('click', toggleFullscreen);
-// The controls and live controller chips above the game.
-startControllerView($('pad'));
+// The official GameCube adapter (WebHID; Chrome/Edge): the button asks for it
+// once, later visits reconnect it silently.
+const adapter = createGcAdapter({ log, onStatus: () => updateAdapterButton() });
+function updateAdapterButton() {
+  $('gcadapter').hidden = !webHidAvailable() || adapter.connected;
+}
+$('gcadapter').addEventListener('click', () => {
+  adapter.request().catch((error) => log(`GC adapter: ${error.message}`)).finally(() => {
+    updateAdapterButton();
+    $('canvas').focus();
+  });
+});
+adapter.reconnect().catch((error) => log(`GC adapter: ${error.message}`)).finally(updateAdapterButton);
+
+// The controls and live controller chips above the game; an adapter's pads
+// come first, then the browser's gamepads.
+startControllerView($('pad'), {
+  getGamepads: () => [
+    ...[0, 1, 2, 3].map((slot) => adapter.pad(slot)).filter(Boolean),
+    ...(navigator.getGamepads?.() ?? []),
+  ],
+});
 
 async function boot() {
   if (!navigator.gpu) throw Error('This browser has no WebGPU. Use a current Chrome or Edge.');
@@ -152,6 +190,7 @@ async function boot() {
   script.onerror = () => fail(Error('melee_browser.js is missing from this folder.'));
   document.head.append(script);
   pak = await openPak('./melee.pak');
+  setSessionContext('pak', { id: pak.id, size: pak.size });
   window.meleePak = pak; // stats, for tests and the console
   updateStart();
 }

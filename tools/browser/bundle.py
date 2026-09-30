@@ -13,6 +13,9 @@ your disc, so it is for your own use; do not publish it.
 """
 import argparse
 import gzip
+import hashlib
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -30,10 +33,14 @@ def main():
     parser.add_argument('--out', default=str(BUILD / 'bundle'))
     parser.add_argument('--repack', action='store_true', help='rebuild melee.pak even if it is up to date')
     parser.add_argument('--jobs', type=int, default=8)
+    parser.add_argument('--sentry-dsn', default=os.environ.get('MELEE_SENTRY_DSN', ''),
+                        help='report crashes to this Sentry project (default: $MELEE_SENTRY_DSN; empty = off)')
     parser.add_argument('--vercel', metavar='DIR',
                         help='also write a static deploy folder (and DIR.zip) for Vercel: no serve.py, plus vercel.json')
     args = parser.parse_args()
     out, iso = Path(args.out).resolve(), Path(args.iso).resolve()
+    if args.sentry_dsn and not re.fullmatch(r'https?://[0-9a-f]+@[\w.-]+(:\d+)?/\d+', args.sentry_dsn):
+        raise SystemExit(f'--sentry-dsn does not look like a Sentry DSN (https://KEY@HOST/PROJECT): {args.sentry_dsn}')
 
     engine = RUNTIME / 'melee_browser.wasm'
     if not engine.exists():
@@ -71,9 +78,21 @@ def main():
     # profile draws with, compiled behind "Preparing graphics" on a first visit.
     shutil.copy2(ROOT / 'tools/browser/vs_pipeline_cache.db.gz', out / 'initial_pipeline_cache.db.gz')
     (out / 'initial_pipeline_cache.db').unlink(missing_ok=True)
-    for name in ('index.html', 'app.mjs', 'controller-view.mjs', 'lzma.mjs', 'lzma.worker.mjs', 'pak-reader.mjs',
-                 'pak-prefetch.worker.mjs', 'serve.py'):
+    for name in ('app.mjs', 'controller-view.mjs', 'gc-adapter.mjs', 'lzma.mjs', 'lzma.worker.mjs', 'pak-reader.mjs',
+                 'pak-prefetch.worker.mjs', 'telemetry.mjs', 'serve.py'):
         shutil.copy2(SOURCES / 'bundle' / name, out / name)
+    shutil.copytree(SOURCES / 'bundle/vendor', out / 'vendor', dirs_exist_ok=True)
+    # index.html with this build's id (engine hash + pak content id, what a
+    # crash report's release names) and the Sentry DSN, if any.
+    engine_hash = hashlib.sha256((out / 'melee_browser.wasm.gz').read_bytes()).hexdigest()[:10]
+    with open(pak, 'rb') as f:
+        pak_id = f.read(48)[32:48].hex()[:8]
+    page = (SOURCES / 'bundle/index.html').read_text()
+    page = page.replace('<meta name="sentry-dsn" content="">', f'<meta name="sentry-dsn" content="{args.sentry_dsn}">')
+    page = page.replace('<meta name="melee-release" content="dev">',
+                        f'<meta name="melee-release" content="melee-web@{engine_hash}-{pak_id}">')
+    (out / 'index.html').write_text(page)
+    print(f'release melee-web@{engine_hash}-{pak_id}, crash reports {"on" if args.sentry_dsn else "off"}')
     if args.vercel:
         write_vercel(out, Path(args.vercel).resolve())
 
@@ -108,12 +127,17 @@ def write_vercel(bundle, dest):
         shutil.rmtree(dest)
     dest.mkdir(parents=True)
     for p in sorted(bundle.iterdir()):
-        if p.is_file() and not p.name.startswith('.') and p.name != 'serve.py':
+        if p.name.startswith('.') or p.name == 'serve.py':
+            continue
+        if p.is_dir():
+            shutil.copytree(p, dest / p.name)
+        else:
             shutil.copy2(p, dest / p.name)
     (dest / 'vercel.json').write_text(json.dumps(VERCEL_JSON, indent=2) + '\n')
     archive = shutil.make_archive(str(dest), 'zip', root_dir=dest)
-    total = sum(p.stat().st_size for p in dest.iterdir())
-    print(f'Vercel folder {dest}: {total / 1e6:.2f} MB ({total / 2**20:.2f} MiB) in {len(list(dest.iterdir()))} files')
+    files = [p for p in dest.rglob('*') if p.is_file()]
+    total = sum(p.stat().st_size for p in files)
+    print(f'Vercel folder {dest}: {total / 1e6:.2f} MB ({total / 2**20:.2f} MiB) in {len(files)} files')
     print(f'Vercel zip    {archive}: {Path(archive).stat().st_size / 1e6:.2f} MB')
 
 

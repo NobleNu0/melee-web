@@ -17,6 +17,12 @@
  * Adapter slot N is always PAD port N.
  *
  * MELEE_GC_ADAPTER=0 hands the adapter back to SDL's driver.
+ *
+ * In the browser there is no hidapi: the page reads the adapter through
+ * WebHID (platforms/browser/bundle/gc-adapter.mjs) and hands each 0x21 report
+ * over through a seqlock'd buffer in shared wasm memory, which the 1000 Hz
+ * poll thread drains here; rumble goes back the same way. Everything from
+ * parse_slot on is shared.
  */
 #include "pc/pc.h"
 
@@ -56,7 +62,25 @@ static int s_open_retries;
 static bool s_warned_open;
 static uint8_t s_rumble[1 + GC_SLOTS] = {0x11};
 
-#if !defined(_WIN32) && !defined(__APPLE__)
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+/* The page writes a report between two increments of s_web_seq (odd while it
+ * writes); the poll thread takes it when the count is even and unchanged
+ * across the copy. Rumble: the thread writes s_web_rumble and bumps
+ * s_web_rumble_seq; the page sends it as output report 0x11. */
+static uint8_t s_web_report[GC_REPORT];
+static _Atomic uint32_t s_web_seq;
+static uint32_t s_web_seen;
+static uint8_t s_web_rumble[1 + GC_SLOTS];
+static _Atomic uint32_t s_web_rumble_seq;
+// clang-format off
+EM_JS(void, web_gc_register, (void* report, void* seq, void* rumble, void* rumble_seq, int length), {
+  Module.meleeGcAdapter = { buffer: HEAPU8.buffer, report, seq, rumble, rumbleSeq: rumble_seq, length };
+});
+// clang-format on
+#endif
+
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(__EMSCRIPTEN__)
 #include <dirent.h>
 #include <stdio.h>
 static bool check_usb_device_attached(uint16_t vid, uint16_t pid) {
@@ -136,6 +160,13 @@ static _Atomic uint64_t s_reports;
 void pc_gcadapter_init(void) {
     const char* env = getenv("MELEE_GC_ADAPTER");
     s_enabled = !(env != NULL && env[0] == '0');
+#ifdef __EMSCRIPTEN__
+    if (s_enabled) {
+        web_gc_register(
+            s_web_report, (void*)&s_web_seq, s_web_rumble, (void*)&s_web_rumble_seq, GC_REPORT);
+    }
+    return;
+#endif
     if (s_enabled) {
         /* Set before SDL_Init(SDL_INIT_JOYSTICK): SDL's driver must not open
          * the adapter, or its rescaled copy would win the virtual-pad merge. */
@@ -150,6 +181,7 @@ static void clear_slot(int i) {
     atomic_store_explicit(&s_raw[i], 0, memory_order_relaxed);
 }
 
+#ifndef __EMSCRIPTEN__
 static void try_open(void) {
     /* Serialise against SDL's own hidapi enumeration (same udev/libusb
      * contexts, and the udev monitor the change count drains), which runs
@@ -224,6 +256,7 @@ static void close_dev(const char* why) {
     }
     publish_snapshot();
 }
+#endif
 
 static s8 rel8(uint8_t v, uint8_t origin) {
     const int d = (int)v - (int)origin;
@@ -334,15 +367,42 @@ static void update_rumble(const uint8_t* slots) {
             changed = true;
         }
     }
+#ifdef __EMSCRIPTEN__
+    if (changed) {
+        memcpy(s_web_rumble, s_rumble, sizeof(s_rumble));
+        atomic_fetch_add_explicit(&s_web_rumble_seq, 1, memory_order_release);
+    }
+#else
     if (changed && SDL_hid_write(s_dev, s_rumble, sizeof(s_rumble)) < 0) {
         pc_log_line("GC adapter: rumble write failed: %s", SDL_GetError());
     }
+#endif
 }
 
 void pc_gcadapter_poll(void) {
     if (!s_enabled) {
         return;
     }
+#ifdef __EMSCRIPTEN__
+    uint8_t report[GC_REPORT];
+    const uint32_t seq = atomic_load_explicit(&s_web_seq, memory_order_acquire);
+    if (seq == s_web_seen || (seq & 1)) {
+        return; /* nothing new, or the page is mid-write: next millisecond */
+    }
+    memcpy(report, s_web_report, sizeof(report));
+    if (atomic_load_explicit(&s_web_seq, memory_order_acquire) != seq || report[0] != 0x21) {
+        return;
+    }
+    s_web_seen = seq;
+    atomic_fetch_add_explicit(&s_reports, 1, memory_order_relaxed);
+    const uint64_t now = SDL_GetTicksNS();
+    for (int i = 0; i < GC_SLOTS; i++) {
+        parse_slot(i, report + 1 + 9 * i, now);
+    }
+    publish_snapshot();
+    update_rumble(report + 1);
+    return;
+#else
     if (s_dev == NULL) {
         /* Hot-plug: once a second, check whether a device came or went. */
         if (++s_retry_ms >= 1000) {
@@ -375,6 +435,7 @@ void pc_gcadapter_poll(void) {
         publish_snapshot();
         update_rumble(last + 1);
     }
+#endif
 }
 
 /* Called at the main-thread input boundary before PADRead. Port 1 is merged
