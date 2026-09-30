@@ -37,6 +37,9 @@ void AuroraOSInitMemory() {
 
   MEM1Start = AllocMEM1(size);
   MEM1End = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(MEM1Start) + size);
+#ifdef __EMSCRIPTEN__
+  Log.info("MEM1 at {:p} - {:p}", MEM1Start, MEM1End);
+#endif
   OSBaseAddress = reinterpret_cast<uintptr_t>(MEM1Start);
   GuardGCMemory();
 }
