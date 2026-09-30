@@ -183,6 +183,8 @@ extern "C" void browser_arq_deliver() {
     ArqJob job=sArqQueue.front();sArqQueue.pop_front();
     arq_transfer(job);
     if(job.callback)job.callback(job.request);
+    // As arq_worker does: netplay (src/pc/net.c dvd_settle) waits for zero.
+    sArqInflight.fetch_sub(1, std::memory_order_release);
   }
   delivering=false;
 }

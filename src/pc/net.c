@@ -224,9 +224,32 @@ static void barrier_raise(int32_t f) {
  * through the same path into ARAM and its own statics, none of which a
  * snapshot covers, so those do not count. */
 void pc_net_note_io(void) {
+#ifdef __EMSCRIPTEN__
+    /* The page runs the audio engine on the game thread (audio.c
+     * pc_audio_pump). Its music stream is what the audio thread requests
+     * natively, which never raises the barrier; it would otherwise hold
+     * every fight in lockstep. */
+    extern bool pc_audio_pumping(void);
+    if (pc_audio_pumping()) {
+        return;
+    }
+#endif
     if (SDL_GetCurrentThreadID() == s_game_thread) {
         int lead = in_fight() ? 2 : IO_QUIET;
+        /* A read inside the scene change's own lockstep window (a fight's
+         * first frames finish its loads) costs nothing more. */
+        bool held = net.frame <= net.rb_barrier;
         barrier_raise(net.frame + lead);
+        /* Every file a VS match needs is loaded before it starts (fighters,
+         * Sheik, Kirby's copy abilities), and frozen Stadium removed the one
+         * mid-match load; a read here is new, and it holds the match in
+         * lockstep for a moment, so name it. */
+        static int s_fight_io_logged;
+        if (net.active && in_fight() && !held && s_fight_io_logged < 3) {
+            s_fight_io_logged++;
+            pc_log_line("net: disc read during the fight at frame %d; no rollback before frame %d",
+                net.frame, net.frame + lead);
+        }
     }
 }
 
@@ -345,7 +368,10 @@ static bool sock_transient(int e) {
  * Winsock has; a POSIX descriptor at or above FD_SETSIZE would overflow its
  * fd_set, so poll() there. */
 static void sock_wait(sock_t s, int ms) {
-#if defined(_WIN32)
+#if defined(__EMSCRIPTEN__)
+    (void)s;
+    net_web_wait(ms);
+#elif defined(_WIN32)
     fd_set r;
     FD_ZERO(&r);
     FD_SET(s, &r);
@@ -368,8 +394,12 @@ static void sock_err_note(const char* what, int e) {
 
 /* One sendto with error translation (caller holds tx_lock). */
 int net_sendto(const void* buf, size_t len) {
+#ifdef __EMSCRIPTEN__
+    int r = net_web_send(buf, len);
+#else
     int r =
         (int)sendto(net.sock, (const char*)buf, len, 0, (struct sockaddr*)&net.peer, net.peer_len);
+#endif
     if (r < 0) {
         int e = sock_last_err();
         if (sock_would_block(e)) {
@@ -926,9 +956,13 @@ bool pc_net_send_datagram(const void* data, size_t size, uint32_t address, uint1
     to.sin_addr.s_addr = address;
     to.sin_port = htons(port);
     SDL_LockMutex(net.tx_lock);
+#ifdef __EMSCRIPTEN__
+    int n = net.active ? net_web_send(data, size) : -1; /* the page's link has one peer */
+#else
     int n = net.active ? (int)sendto(net.sock, (const char*)data, (int)size, 0,
                              (struct sockaddr*)&to, sizeof to) :
                          -1;
+#endif
     SDL_UnlockMutex(net.tx_lock);
     return n == (int)size;
 }
@@ -1124,7 +1158,14 @@ static bool rx_pump(void) {
         } u;
         struct sockaddr_storage from;
         socklen_t from_len = sizeof from;
+#ifdef __EMSCRIPTEN__
+        /* Everything on the page's link is from the peer it was opened to. */
+        int n = net_web_recv(&u, sizeof u);
+        memcpy(&from, &net.peer, net.peer_len);
+        from_len = net.peer_len;
+#else
         int n = (int)recvfrom(net.sock, (char*)&u, sizeof u, 0, (struct sockaddr*)&from, &from_len);
+#endif
         if (n < 0) {
             int e = sock_last_err();
             if (sock_would_block(e)) {
@@ -1181,6 +1222,20 @@ static uint64_t rx_heard_ns(void) {
     SDL_UnlockMutex(s_rx_lock);
     return t;
 }
+
+#ifdef __EMSCRIPTEN__
+/* The page calls this the moment a datagram lands in net_web.c's ring
+ * (netplay.mjs), from its event loop -- that is, while the game thread is
+ * parked in a yield, never inside a tick. It is the native receive thread's
+ * turn: the gate, the ack and the RTT sample happen on arrival instead of at
+ * the next tick, which kept a frame of processing in every ping sample. */
+void pc_net_web_rx_now(void) {
+    if (net.active && s_rx_thread == NULL) {
+        atomic_store(&s_frame_pub, net.frame);
+        rx_pump();
+    }
+}
+#endif
 
 /* Apply what the receive thread queued, in arrival order (game thread): the
  * frame loop calls this once per fresh tick and wait_remote() once a turn. */
@@ -1997,12 +2052,14 @@ static bool addr_is_host(const struct sockaddr* sa) {
 static bool connect_impl(
     sock_t supplied, const char* ip, uint16_t port, int player, uint32_t seed) {
 #ifdef __EMSCRIPTEN__
-    /* A page has no UDP: Emscripten's sockets are WebSocket proxies. Every
-     * session path (MELEE_NET, the lobby's DHT socket) comes through here, so
-     * refusing here keeps netplay inert and its receive thread unstarted. */
-    (void)supplied, (void)ip, (void)port, (void)player, (void)seed;
-    pc_log_line("net: netplay is unavailable in the browser");
-    return false;
+    /* A page has no UDP (Emscripten's sockets are WebSocket proxies). The only
+     * session is the one the browser matchmaker (net_match_web.c) hands over
+     * on the page's own link, net_web.c; MELEE_NET and the DHT stay inert. */
+    if (supplied != NET_WEB_SOCK) {
+        (void)ip, (void)port, (void)player, (void)seed;
+        pc_log_line("net: netplay in the browser goes through the page's link only");
+        return false;
+    }
 #endif
     if (net.tx_lock == NULL) {
         net.tx_lock = SDL_CreateMutex();
@@ -2010,6 +2067,21 @@ static bool connect_impl(
         sock_startup();
     }
     pc_net_disconnect();
+#ifdef __EMSCRIPTEN__
+    /* The page's link: one peer, no address to resolve, nothing to bind.
+     * net.peer is a placeholder every received datagram is stamped with
+     * (rx_pump), so the gate's source check pins to it as for a socket. */
+    sock_t sock = supplied;
+    unsigned short bind_port = 0;
+    {
+        struct sockaddr_in* a = (struct sockaddr_in*)&net.peer;
+        memset(&net.peer, 0, sizeof net.peer);
+        a->sin_family = AF_INET;
+        a->sin_addr.s_addr = htonl(0x7F000002);
+        a->sin_port = htons(port);
+        net.peer_len = sizeof *a;
+    }
+#else
     char portstr[8];
     snprintf(portstr, sizeof portstr, "%u", port);
     struct addrinfo hints, *res = NULL;
@@ -2088,6 +2160,7 @@ static bool connect_impl(
             pc_log_line("net: could not set DSCP EF on the socket (non-fatal)");
         }
     }
+#endif
 #endif
     session_reset();
     /* A full raw queue (any stall) with qtype 0 makes the pad alarm shift
@@ -2906,6 +2979,16 @@ static void dvd_settle(void) {
          * disc drain reports a healthy thread (and dumps a stack from inside
          * whatever it happens to hold). */
         net_watchdog_heartbeat();
+#ifdef __EMSCRIPTEN__
+        /* The page's disc reads finish inside the call and only their
+         * completions wait, for a delivery point on this thread
+         * (platforms/browser/dvd.c, AR.cpp); pc_os_run_alarms is one, and
+         * nothing else runs while this loop waits, so it has to be one too. */
+        extern void browser_disc_deliver(void);
+        extern void browser_arq_deliver(void);
+        browser_disc_deliver();
+        browser_arq_deliver();
+#endif
         SDL_DelayNS(200000);
     }
 }

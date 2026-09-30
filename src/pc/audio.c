@@ -851,8 +851,16 @@ EM_JS(int, web_audio_start, (float* ring, unsigned frames, void* write_idx, void
 });
 // clang-format on
 
+static int pumping;
+/* True while the audio engine runs here. Natively it has its own thread,
+ * and netplay tells its music-stream disc requests apart by that thread
+ * (net.c pc_net_note_io); in the page it runs on the game thread, inside
+ * this. */
+bool pc_audio_pumping(void) {
+    return pumping != 0;
+}
+
 void pc_audio_pump(void) {
-    static int pumping;
     if (pumping || !s_web_ready)
         return;
     pumping = 1;

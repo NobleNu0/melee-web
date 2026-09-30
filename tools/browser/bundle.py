@@ -35,12 +35,17 @@ def main():
     parser.add_argument('--jobs', type=int, default=8)
     parser.add_argument('--sentry-dsn', default=os.environ.get('MELEE_SENTRY_DSN', ''),
                         help='report crashes to this Sentry project (default: $MELEE_SENTRY_DSN; empty = off)')
+    parser.add_argument('--signal-url', default=os.environ.get('MELEE_SIGNAL_URL', ''),
+                        help='online play through this netplay Worker, e.g. wss://melee-netplay.NAME.workers.dev '
+                             '(platforms/browser/netplay-worker; default: $MELEE_SIGNAL_URL; empty = offline only)')
     parser.add_argument('--vercel', metavar='DIR',
                         help='also write a static deploy folder (and DIR.zip) for Vercel: no serve.py, plus vercel.json')
     args = parser.parse_args()
     out, iso = Path(args.out).resolve(), Path(args.iso).resolve()
     if args.sentry_dsn and not re.fullmatch(r'https?://[0-9a-f]+@[\w.-]+(:\d+)?/\d+', args.sentry_dsn):
         raise SystemExit(f'--sentry-dsn does not look like a Sentry DSN (https://KEY@HOST/PROJECT): {args.sentry_dsn}')
+    if args.signal_url and not re.fullmatch(r'(wss|https)://[\w.-]+(:\d+)?/?', args.signal_url):
+        raise SystemExit(f'--signal-url must be the Worker origin, wss://HOST or https://HOST: {args.signal_url}')
 
     engine = RUNTIME / 'melee_browser.wasm'
     if not engine.exists():
@@ -78,7 +83,7 @@ def main():
     # profile draws with, compiled behind "Preparing graphics" on a first visit.
     shutil.copy2(ROOT / 'tools/browser/vs_pipeline_cache.db.gz', out / 'initial_pipeline_cache.db.gz')
     (out / 'initial_pipeline_cache.db').unlink(missing_ok=True)
-    for name in ('app.mjs', 'controller-view.mjs', 'gc-adapter.mjs', 'lzma.mjs', 'lzma.worker.mjs', 'pak-reader.mjs',
+    for name in ('app.mjs', 'controller-view.mjs', 'gc-adapter.mjs', 'lzma.mjs', 'lzma.worker.mjs', 'netplay.mjs', 'pak-reader.mjs',
                  'pak-prefetch.worker.mjs', 'telemetry.mjs', 'serve.py'):
         shutil.copy2(SOURCES / 'bundle' / name, out / name)
     shutil.copytree(SOURCES / 'bundle/vendor', out / 'vendor', dirs_exist_ok=True)
@@ -89,10 +94,12 @@ def main():
         pak_id = f.read(48)[32:48].hex()[:8]
     page = (SOURCES / 'bundle/index.html').read_text()
     page = page.replace('<meta name="sentry-dsn" content="">', f'<meta name="sentry-dsn" content="{args.sentry_dsn}">')
+    page = page.replace('<meta name="melee-signal" content="">', f'<meta name="melee-signal" content="{args.signal_url}">')
     page = page.replace('<meta name="melee-release" content="dev">',
                         f'<meta name="melee-release" content="melee-web@{engine_hash}-{pak_id}">')
     (out / 'index.html').write_text(page)
-    print(f'release melee-web@{engine_hash}-{pak_id}, crash reports {"on" if args.sentry_dsn else "off"}')
+    print(f'release melee-web@{engine_hash}-{pak_id}, crash reports {"on" if args.sentry_dsn else "off"}, '
+          f'online play {args.signal_url or "off"}')
     if args.vercel:
         write_vercel(out, Path(args.vercel).resolve())
 

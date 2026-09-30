@@ -14,23 +14,38 @@
 #include <stdlib.h>
 
 #include "pc/file_cache.h"
+#include "pc/net.h"
 #include "pc/pc.h"
 #include "pc/slp.h"
 
-/* Desktop launcher preferences; defaults match launcher_data.hpp. MELEE_UCF is
- * the one the launcher also reads from the environment (launcher.cpp). */
+/* Desktop launcher preferences; defaults match launcher_data.hpp, except that
+ * the VS-only profile plays the competitive standard (Slippi's and 20XX's):
+ * UCF on. MELEE_UCF overrides it, as in the launcher (launcher.cpp). */
 bool pc_is_unlock_all_enabled(void) {
     return pc_vs_only();
 }
+/* Frozen Pokemon Stadium (no transformations): the competitive standard,
+ * Slippi's online setting, and one less file loaded mid-match (the four
+ * transformation archives). A session plays the host's value, carried in
+ * RULES, as launcher.cpp does; MELEE_FROZEN_STADIUM=0 restores the
+ * transformations. */
 bool pc_is_frozen_stadium_enabled(void) {
-    return false;
+    bool unlock_all, frozen;
+    if (pc_net_rules(&unlock_all, &frozen)) {
+        return frozen;
+    }
+    const char* env = getenv("MELEE_FROZEN_STADIUM");
+    return env != NULL ? env[0] != '0' : pc_vs_only();
 }
 bool pc_is_free_camera_enabled(void) {
     return false;
 }
 bool pc_is_ucf_enabled(void) {
     const char* env = getenv("MELEE_UCF");
-    return env != NULL && env[0] != '0';
+    if (pc_net_deterministic()) {
+        return true; /* both peers must agree; launcher.cpp forces it too */
+    }
+    return env != NULL ? env[0] != '0' : pc_vs_only();
 }
 int pc_get_hud_mode(void) {
     return 0;

@@ -92,6 +92,11 @@ int pc_get_hud_mode(void);
  * Start goes straight to VS; only tournament-legal stages (StKind values). */
 bool pc_vs_only(void);
 bool pc_is_legal_stage(unsigned stkind);
+/* MELEE_ONLINE (VS-only profile): the page asked for a netplay session.
+ * pc_online_take() consumes the request once; *target is the friend's code
+ * to call, or NULL to wait for a friend under our own code. */
+bool pc_online_requested(void);
+bool pc_online_take(const char** target);
 float pc_get_music_volume(void);
 float pc_get_sfx_volume(void);
 /* Build version string ("v0.1.8-beta"), src/pc/version.cpp. */

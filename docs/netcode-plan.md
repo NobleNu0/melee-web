@@ -2327,3 +2327,163 @@ preservation and Android restore. Native macOS restore is added to the macOS
 build workflow and requires that runner; Windows x86-64 restore still passes
 under Wine. Full matches on Apple, Windows ARM64 and Android devices remain
 acceptance work requiring those platforms.
+
+## 17. Browser (wasm), 2026-09-30
+
+The web app (platforms/browser, `tools/browser/bundle.py`) now plays online.
+Everything from the lobby on is this document's engine, compiled unchanged;
+what a page cannot do natively is replaced underneath it
+(platforms/browser/README.md, "Online play").
+
+| Native | Browser | Where |
+|---|---|---|
+| UDP socket, `sendto`/`recvfrom`/`poll` | two single-producer rings in shared wasm memory; the page sends each datagram over a WebRTC data channel (unordered, `maxRetransmits: 0`) or, when no direct path exists, the matchmaking Worker's WebSocket relay | `src/pc/net_web.c`, `net.c` `__EMSCRIPTEN__` branches, `bundle/netplay.mjs` |
+| DHT rendezvous and signed pairing (`net_match.c`) | a Cloudflare Worker room named by the host's 8-character code (Durable Object; pairs, forwards WebRTC signalling, relays) | `src/pc/net_match_web.c`, `platforms/browser/netplay-worker` |
+| ELF/PE/Mach-O snapshot ranges | object segments renamed `melee_data`/`melee_bss` (same exclusions as `melee_state.ld`); wasm-ld's `__start_`/`__stop_` bracket them | `tools/browser/wasm_state_sections.py`, `melee_state.h` |
+| receive thread, 4 ms timer thread | SDL is built without threads here: reception runs on the game thread (`recv_inputs` drains the ring every tick and wait turn) and the timer fires from the event loop between frames; the page can only deliver a datagram while the game thread yields anyway | `net.c` fallbacks as written |
+
+The session layer, handshake (RULES/READY, nonces, session key), ready
+barrier and everything after run unchanged, and so does the per-datagram MAC:
+the relay forwards bytes it cannot forge. Browser and native builds do not
+meet (no WebRTC natively, no UDP in a page).
+
+Found and fixed on the way, all browser-only:
+
+- `browser_arq_deliver` (aurora AR.cpp) never decremented `sArqInflight`, so
+  `aurora_arq_inflight()` only grew and `dvd_settle` spent its full 5 s on
+  every tick. It now decrements as `arq_worker` does, and `dvd_settle`
+  delivers the page's queued disc/ARQ completions while it waits (nothing
+  else can run on that thread while it spins).
+- The audio engine runs on the game thread inside `pc_audio_pump`, so its
+  music-stream requests went through `pc_net_note_io` as game-thread I/O and
+  pushed the rollback barrier ahead of every fight frame (a fight in
+  permanent lockstep). Requests made inside the pump are now treated as the
+  native audio thread's are.
+- MEM1 was a `calloc` whose address depended on what the page allocated
+  first (the environment strings differ between host and guest), so the two
+  peers' heaps held different pointers and neither was 32-byte aligned. It is
+  now `memalign(256 MiB)`, which lands at 0x10000000 on both.
+
+Measured (two headed Chromes on one Mac, local `wrangler dev`, synced
+keyboard input through CSS/SSS and 20 s of play on Fountain of Dreams):
+
+| Link | ping | loss | rollbacks (max depth) | desync | take / restore |
+|---|---|---|---|---|---|
+| loopback, direct WebRTC | 12-20 ms | 0 % | 0 | none | 0.42 / - ms |
+| `MELEE_NET_SIM_DELAY_MS=40`, `_JITTER_MS=8`, `_LOSS=2` | ~100 ms | 2-3 % | 80 host, 72 guest (3) | none | 0.16 / 0.08 ms |
+
+### 17.1 Latency, second pass
+
+- **Send at once.** `net_web_send` on the page's thread calls the data
+  channel's synchronous `send()` directly (`web_net_send_now`); the ring is
+  left for worker threads. Before, a datagram waited for the game thread to
+  finish rendering and yield.
+- **Receive on arrival.** The page runs `net_web_pump` -> `pc_net_web_rx_now`
+  -> `rx_pump` the moment a datagram lands, from its event loop (so only ever
+  at a point where the game thread is parked in a yield), which is what the
+  native receive thread does: the gate, the ack and the RTT sample happen on
+  arrival, not at the next tick.
+- **A real clock.** SDL times everything with
+  `clock_gettime(CLOCK_MONOTONIC_RAW)`, which Emscripten's libc rejects
+  (EINVAL); SDL then fell back to `gettimeofday`, i.e. `Date.now()`: whole
+  milliseconds, and not monotonic. Frame pacing, RTT, jitter, time sync and
+  every timeout were 1 ms-quantized. `platforms/browser/clock.c`
+  (`-Wl,--wrap=clock_gettime`) maps RAW to CLOCK_MONOTONIC
+  (`performance.now()`).
+- **Choosing a delay.** The start screen offers Auto (default) or a fixed 1-4
+  frames (`MELEE_NET_DELAY`), like Slippi's setting.
+
+| Link | before | after |
+|---|---|---|
+| loopback, menus | ping 12-20 ms, jitter ~7 ms, fight delay 2 | ping 1-2 ms, jitter 0.3 ms, fight delay 1 (the LAN rule) |
+| +40 ms each way, 8 ms jitter, 2 % loss | ping 100-106 ms | ping 87-95 ms |
+
+In a fight the loopback ping reads ~8 ms: that is each side's busy part of a
+frame (tick and render) before its event loop can take the packet. It does
+not delay the input itself, which is consumed at the next tick either way.
+
+### 17.2 The full-state hash across peers
+
+`MELEE_NET_STATE_DUMP=<frame>|all` hands every snapshot region at that frame
+to the page (`Module.meleeStateDump(s)`); diffing two peers' dumps against a
+wasm-ld map (`-Wl,--Map`) names every differing byte. None of them is
+simulation state (the frame checksum agreed throughout), and they fall in
+three groups:
+
+- **Presentation written into simulation memory.** Render-side counters
+  (`psFrameNum` and the particle sort cache in `psdisp.c`, the per-present
+  counter `gm_80479D58.unk_4`), and HSD's lazily computed JObj world matrices
+  and their dirty flags: whichever of a render or a simulation read comes
+  first computes them, and under rollback two peers render at different
+  points relative to their ticks. The simulation recomputes a dirty matrix
+  before reading it, so its results agree; the cached bytes do not.
+- **Per-player by design.** The online HUD's SIS text (each side prints its
+  own ping and opponent code) in the game heap, the lobby's text and dialled
+  code, the rumble list (`gmMain_8046B1F8`), and the empty ports 3-4 of the
+  pad status tables, whose `repeat_count` counts ticks since each machine
+  booted.
+- **Wall clock.** `gmMainLib_8046B0F0.x10`, the play-time record.
+
+So a whole-memory hash cannot be compared across peers as things stand; the
+frame checksum is the cross-peer check. Making it comparable would take
+flushing every dirty matrix before hashing and moving the HUD's text out of
+the game heap.
+
+### 17.3 What the snapshot holds
+
+Measured with `MELEE_NET_STATE_DUMP=all` over 24 s of a fight (nine dumps):
+
+| Region | Bytes | Changed during the fight |
+|---|---|---|
+| `data` | 203 KiB | 0.8 KiB (0.4 %) |
+| `bss` | 537 KiB | 8.6 KiB (1.6 %) |
+| game heap | 1.71 MiB in 4519 cells, no free holes | 338 KiB (in 1909 cells) |
+
+About 85 % of every snapshot is constant for the whole fight. Only fight
+frames are ever predicted, so only what a fight writes has to be in it, but
+constant is not the same as provably unwritten:
+
+- Taken out (browser, `wasm_state_sections.py`): the SIS glyph atlas copied
+  from the DOL at boot (147 KiB), the particle display module (render state:
+  view matrices, previous GX state, the sort cache and its frame stamp, which
+  must not be rewound anyway), and the lobby's screen. Snapshot 2.45 -> 2.29
+  MiB. The same exclusions apply to `melee_state.ld` and the PE/Mach-O lists
+  natively; not done there yet.
+- Left in: loaded archives in the game heap are only 215 KiB (9 %; `PlCo.dat`
+  is 149 KiB of it) and a mid-fight parse or free would have to change the
+  region set only at a barrier; the other 870 KiB of constant heap is live
+  objects (a stage's static geometry, texture buffers, a 154 KiB buffer that
+  stays zero) that nothing identifies ahead of time.
+- Why not dirty tracking: wasm has no write barrier (no `mprotect`), and a
+  compare-based delta reads the snapshot and the heap both, which costs more
+  than the `memory.copy` it would save. A take is 0.18 ms and a restore
+  0.07 ms (µs clock, lossy run above); re-simulating the rolled-back ticks is
+  what a rollback actually costs.
+
+### 17.4 From Slippi's online setup
+
+- **Frozen Pokemon Stadium by default** (`pc_stubs.c`; the host's value is
+  what RULES carries). With it, a VS match loads nothing after it starts:
+  traced with `MELEE_DVD_TRACE` over four CPUs (Kirby, Zelda, Ice Climbers,
+  Pikachu), every fighter file, Sheik's and Kirby's copy abilities
+  (`PlKbCp*.dat`) load before the first frame; the Stadium transformations
+  were the only mid-match loads. `net: disc read during the fight` names any
+  read that holds rollback outside a scene change's own lockstep window.
+  Testing the transformations found two more d8f2384 regressions, both
+  offline crashes on Stadium: the kind drawn as a table index
+  (`HSD_Randi(4)` instead of `sp60[...]`, an assert on the first
+  transformation) and `grStadium_801D42B8` parsing the loaded archive twice
+  and reporting "done" while still loading (the second parse walks extern
+  chains the first cleared: an endless loop in `lbArchive_InitializeDAT`).
+- **Input read after the pacing sleep.** The browser pumped events and read
+  controllers before the frame boundary's sleep, so the tick consumed input a
+  sleep old (the polling drift Slippi's lag reduction fixes; natively the
+  1000 Hz poll thread hides it for gamepads). `pc_refresh_input` pumps again
+  just before the pad alarm. Sample age at the tick, 600 frames at the title:
+  mean 14.8 / p99 16.8 ms before, 0.12 / 0.3 ms after.
+- **Desync shown.** The page turns the online chip into "Desynced" on the
+  engine's `net: DESYNC` line and reports it to Sentry. Ending the match on a
+  desync, as Slippi's ranked does, waits for a ranked mode.
+
+Still to do: real-network acceptance (two homes, NATs without TURN, the
+relay's added latency).

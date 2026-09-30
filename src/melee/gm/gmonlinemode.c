@@ -666,9 +666,16 @@ void gm_Scene_OnlineLobby_OnEnter(UNUSED void* unused)
     if (online_kind == ONLINE_KIND_PROFILE) {
         profileRefresh();
     } else if (internetLobby() && online_kind == ONLINE_KIND_DIRECT) {
-        /* Ask for the code first: starting on a stale launcher pref is how
-         * two players both ended up hosting their own codes forever. */
-        directEntryBegin();
+        const char* request;
+        if (pc_online_take(&request)) {
+            /* The browser page's host button or invite link (MELEE_ONLINE):
+             * the player already chose, so dial at once. */
+            directCall(request);
+        } else {
+            /* Ask for the code first: starting on a stale launcher pref is how
+             * two players both ended up hosting their own codes forever. */
+            directEntryBegin();
+        }
     } else if (internetLobby() && !awaiting_rank_result &&
                (online_kind != ONLINE_KIND_RANKED ||
                                   pc_net_match_publication(NULL) == 0)) {
@@ -941,7 +948,8 @@ void gm_Scene_OnlineLobby_OnFrame(void)
             sfxBack();
             pc_net_peer_status_clear();
             pc_net_match_stop();
-            gm_ChangeGameModeAfterCurrentScene(GM_MENU);
+            /* The VS-only profile has no main menu: back to the title. */
+            gm_ChangeGameModeAfterCurrentScene(pc_vs_only() ? GM_TITLE : GM_MENU);
             gm_801A4B60();
         }
         return;

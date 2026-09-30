@@ -115,6 +115,19 @@ static inline void sock_startup(void) {}
 #define sock_close close
 #endif
 
+#ifdef __EMSCRIPTEN__
+/* A page has no UDP. The session "socket" is the page's link to the peer
+ * (src/pc/net_web.c, platforms/browser/bundle/netplay.mjs): these stand in
+ * for sendto/recvfrom/poll on it, with the same drop-when-full semantics. */
+#define NET_WEB_SOCK 0x7EB0
+int net_web_send(const void* buf, size_t len);
+int net_web_recv(void* buf, size_t cap); /* -1 with errno EAGAIN when empty */
+void net_web_wait(int ms);
+void net_web_reset(void);
+#undef sock_close
+#define sock_close(s) ((s) == NET_WEB_SOCK ? (net_web_reset(), 0) : close(s))
+#endif
+
 /* ---- constants -------------------------------------------------------- */
 
 #define RING 64 /* frames of history kept per side; power of two */

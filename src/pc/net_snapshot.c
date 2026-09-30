@@ -407,6 +407,42 @@ uint64_t net_state_hash(int32_t* frame) {
     return s_full_hash;
 }
 
+/* MELEE_NET_HASH_REGIONS=1 logs every snapshot region's hash beside the
+ * full one, so two peers' logs name the region whose bytes differ;
+ * MELEE_NET_HASH_REGIONS=<name>[,<name>...] also logs those regions in 4 KiB
+ * chunks, which names the address. Raw bytes, ignored spans included: a diagnostic. */
+static int regions_now(Region* r); /* with the snapshot below */
+#ifdef __EMSCRIPTEN__
+static void state_dump(int32_t frame); /* with the sync test below */
+#endif
+static void region_hash_dump(int32_t frame) {
+    static const char* want;
+    static bool read;
+    if (!read) {
+        read = true;
+        want = getenv("MELEE_NET_HASH_REGIONS");
+    }
+    if (want == NULL || want[0] == '\0' || want[0] == '0') {
+        return;
+    }
+    Region r[MAX_REGIONS];
+    int n = regions_now(r);
+    for (int i = 0; i < n; i++) {
+        pc_log_line("net: hash %d %s %p+%zu %016llx", frame, r[i].name, r[i].ptr, r[i].len,
+            (unsigned long long)XXH3_64bits(r[i].ptr, r[i].len));
+        const char* hit = strstr(want, r[i].name);
+        size_t len_name = strlen(r[i].name);
+        if (hit == NULL || (hit[len_name] != '\0' && hit[len_name] != ',')) {
+            continue;
+        }
+        for (size_t at = 0; at < r[i].len; at += 4096) {
+            size_t len = r[i].len - at < 4096 ? r[i].len - at : 4096;
+            pc_log_line("net: hash %d %s+%zx %016llx", frame, r[i].name, at,
+                (unsigned long long)XXH3_64bits((const char*)r[i].ptr + at, len));
+        }
+    }
+}
+
 static void state_hash_periodic(int32_t frame) {
     /* Never during a load: an I/O worker writes into a heap while the game
      * thread runs, so the read would be torn and the peers would differ over
@@ -432,6 +468,10 @@ static void state_hash_periodic(int32_t frame) {
      * has already passed, which is a torn hash and a mismatch over nothing. */
     bool intr = OSDisableInterrupts();
     s_full_hash = state_hash();
+    region_hash_dump(frame);
+#ifdef __EMSCRIPTEN__
+    state_dump(frame);
+#endif
     OSRestoreInterrupts(intr);
     s_full_hash_frame = frame;
     uint64_t dt = SDL_GetTicksNS() - t0;
@@ -790,6 +830,67 @@ static int synctest_ignored_spans(SynctestIgnoredSpan spans[3]) {
         HSD_PadLibData.queue != NULL ? (size_t)qn * sizeof *HSD_PadLibData.queue : 0};
     return 3;
 }
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+// clang-format off
+EM_JS_DEPS(net_state_dump, "$UTF8ToString");
+EM_JS(void, web_state_dump, (const char* regions, const void* bytes, int len, int frame), {
+  const dump = { frame, regions: JSON.parse(UTF8ToString(regions)), bytes: HEAPU8.slice(bytes, bytes + len) };
+  Module.meleeStateDump = dump;
+  (Module.meleeStateDumps ??= {})[frame] = dump;
+});
+// clang-format on
+/* MELEE_NET_STATE_DUMP=<frame> (a multiple of STATE_HASH_EVERY, in a fight),
+ * or =all for every hashed frame: every snapshot region's bytes at that
+ * frame, with the spans state_hash() skips zeroed, handed to the page as
+ * Module.meleeStateDump(s). Two peers' dumps diff to the exact bytes that
+ * make their full-state hashes differ; one peer's dumps at two frames show
+ * which of the snapshot actually changes. */
+static void state_dump(int32_t frame) {
+    static int32_t want = -2;
+    if (want == -2) {
+        const char* e = getenv("MELEE_NET_STATE_DUMP");
+        want = e == NULL ? -1 : strcmp(e, "all") == 0 ? INT32_MAX : atoi(e);
+    }
+    if (want < 0 || (want != INT32_MAX && frame != want)) {
+        return;
+    }
+    Region r[MAX_REGIONS];
+    int n = regions_now(r);
+    SynctestIgnoredSpan ignored[3];
+    int nignored = synctest_ignored_spans(ignored);
+    size_t total = 0;
+    for (int i = 0; i < n; i++) {
+        total += r[i].len;
+    }
+    uint8_t* buf = malloc(total ? total : 1);
+    char json[4096];
+    size_t jl = (size_t)snprintf(json, sizeof json, "[");
+    size_t at = 0;
+    for (int i = 0; i < n && buf != NULL; i++) {
+        memcpy(buf + at, r[i].ptr, r[i].len);
+        uintptr_t lo = (uintptr_t)r[i].ptr, hi = lo + r[i].len;
+        for (int j = 0; j < nignored; j++) {
+            uintptr_t a = (uintptr_t)ignored[j].ptr, b = a + ignored[j].len;
+            if (a < hi && b > lo) {
+                uintptr_t from = a > lo ? a : lo, to = b < hi ? b : hi;
+                memset(buf + at + (from - lo), 0, to - from);
+            }
+        }
+        jl += (size_t)snprintf(json + jl, sizeof json - jl,
+            "%s{\"name\":\"%s\",\"addr\":%zu,\"len\":%zu,\"off\":%zu}", i ? "," : "", r[i].name,
+            (size_t)lo, r[i].len, at);
+        at += r[i].len;
+    }
+    snprintf(json + jl, sizeof json - jl, "]");
+    if (buf != NULL) {
+        web_state_dump(json, buf, (int)total, frame);
+        free(buf);
+    }
+    pc_log_line("net: state dump at frame %d: %zu bytes in %d regions", frame, total, n);
+}
+#endif
 
 static bool synctest_ignored_byte(const void* ptr) {
     uintptr_t p = (uintptr_t)ptr;

@@ -66,6 +66,8 @@ VS_ONLY_FILES = {
     'MnSlChr.usd', 'MnSlMap.usd', 'MnExtAll.usd', 'SdSlChr.usd', 'SdRst.usd', 'SdIntro.dat',
     'IfAll.usd', 'IfCoGet.dat', 'ItCo.usd', 'LbBf.dat', 'LbRb.dat', 'LbRf.dat',
     'LbMcGame.usd', 'NtMemAc.usd', 'PdPm.dat',
+    # The netplay lobby (mnonlinelobby.c): main-menu backdrop and menu text.
+    'MnMaAll.usd', 'SdMenu.usd',
     # Every stage load updates trophy flags from these tables
     # (Ground_801C5878 -> Toy_803124BC); the trophy models are not needed.
     'TyDatai.usd',

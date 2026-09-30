@@ -24,6 +24,7 @@
 #include <sysdolphin/baselib/sislib.h>
 #include <sysdolphin/baselib/video.h>
 #ifdef TARGET_PC
+#include "gmonlinemode.h"
 #include "gmvsmelee.h"
 #include "pc/pc.h"
 #include <melee/ft/forward.h>
@@ -457,6 +458,12 @@ void gm_801A4510(void)
          * later. Heap 0 as for MELEE_BOOT_SCENE above. */
         state_machine.routing.curr_mode = GM_TITLE;
         lbHeap_80015900();
+        if (pc_online_requested()) {
+            /* The page's host button or an invite link: straight to the
+             * Direct Connect lobby, which dials (gmonlinemode.c). */
+            gmOnline_SetKind(ONLINE_KIND_DIRECT);
+            state_machine.routing.curr_mode = GM_ONLINE;
+        }
     }
     if (pc_vs_only()) {
         pc_vs_only_defaults();

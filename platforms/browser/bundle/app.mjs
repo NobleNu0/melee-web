@@ -6,6 +6,7 @@ import { openPak } from './pak-reader.mjs';
 import { checkGraphics } from './gpu-preflight.mjs';
 import { startControllerView } from './controller-view.mjs';
 import { createGcAdapter, webHidAvailable } from './gc-adapter.mjs';
+import { LINK, createNetplay, formatCode, inviteLink, normalizeCode } from './netplay.mjs';
 import {
   reportEngineAbort, reportEngineWarning, reportPageError, setSessionContext, startTelemetry, telemetryDsn,
 } from './telemetry.mjs';
@@ -32,6 +33,7 @@ Error.stackTraceLimit = 64; // engine aborts log a stack; keep it whole
 const params = new URLSearchParams(location.search);
 const lines = [];
 let lastPanic = '';
+let netDesync = false;
 function log(text) {
   text = String(text);
   lines.push(text);
@@ -41,6 +43,14 @@ function log(text) {
   // The assert location a crash report is titled and grouped by.
   if (text.startsWith('PANIC ')) lastPanic = text.trim();
   if (/ is not in this bundle/.test(text)) reportEngineWarning(text);
+  // The two games' frame checksums disagreed (src/pc/net.c check_desync):
+  // they have parted and no rollback brings them back. Slippi ends a ranked
+  // match here; unranked, say so plainly and report it (once per session).
+  if (/^net: DESYNC at frame/.test(text)) {
+    netDesync = true;
+    updateNet(netplay.info());
+    reportEngineWarning(text.replace(/\(local .*$/, '').trim());
+  }
 }
 function status(text, { error = false } = {}) {
   $('status').textContent = text;
@@ -78,6 +88,23 @@ for (const [key, value] of params) {
   if (/^MELEE_[A-Z0-9_]+$/.test(key)) ENV[key] = value;
 }
 ENV.MELEE_VS_ONLY = '1';
+
+// Online play (netplay.mjs, src/pc/net_match_web.c): ?online=host waits for a
+// friend under this browser's code, ?join=CODE calls theirs. The engine boots
+// into the Direct Connect lobby and dials once (MELEE_ONLINE). The matchmaking
+// Worker comes from the page (bundle.py --signal-url); ?signal= overrides it
+// on a local test page only.
+const localPage = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+const signalUrl = (localPage && params.get('signal')) ||
+  document.querySelector('meta[name="melee-signal"]')?.content?.trim() || '';
+const joinCode = normalizeCode(params.get('join'));
+const hosting = params.get('online') === 'host';
+const netplay = createNetplay({ signalUrl, log, onChange: (info) => updateNet(info) });
+if (netplay.enabled && (hosting || joinCode)) ENV.MELEE_ONLINE = hosting ? 'host' : joinCode;
+// A fixed input delay (the start screen's choice), else the netcode's auto
+// delay (src/pc/net_sync.c: 1 on a fast link, 2 otherwise, in a fight).
+const storedDelay = (() => { try { return localStorage.getItem('melee-net-delay') || ''; } catch { return ''; } })();
+if (ENV.MELEE_ONLINE && /^[1-4]$/.test(storedDelay) && !ENV.MELEE_NET_DELAY) ENV.MELEE_NET_DELAY = storedDelay;
 // ?res=1440x1080 renders above the default 960x720 (the canvas is its size).
 const res = /^(\d{3,4})x(\d{3,4})$/.exec(params.get('res') || '');
 if (res) Object.assign($('canvas'), { width: +res[1], height: +res[2] });
@@ -108,6 +135,9 @@ window.Module = {
     status(done === total ? 'Starting…' : `Preparing graphics… ${Math.floor(done * 100 / total)}%`);
   },
   onRuntimeInitialized: () => { runtimeReady = true; updateStart(); },
+  // Netplay's datagram rings (net_web.c) and the matchmaker's calls into the page.
+  meleeNetplay: netplay,
+  meleeNetLinkReady: () => netplay.attach(Module.meleeNetLink, () => Module._net_web_pump?.()),
   // melee_browser.wasm.gz instead of Emscripten's own fetch of the plain file.
   instantiateWasm(imports, done) {
     fetchGzipped('./melee_browser.wasm.gz')
@@ -152,6 +182,74 @@ async function start() {
   }
 }
 $('start').addEventListener('click', () => start().catch(fail));
+
+// ---- online play: start-screen choices and the in-game chip ----------------
+function goOnline(query) {
+  const url = new URL(location.href);
+  url.search = query;
+  location.assign(url.href);
+}
+function setupOnline() {
+  if (!netplay.enabled) return;
+  const mine = netplay.localCode().slice(1);
+  $('online').hidden = false;
+  $('host').addEventListener('click', () => goOnline('?online=host'));
+  $('net-delay').value = /^[1-4]$/.test(storedDelay) ? storedDelay : '';
+  $('net-delay').addEventListener('change', () => {
+    try { localStorage.setItem('melee-net-delay', $('net-delay').value); } catch {}
+    // Read at boot: reload into the same online mode, still on the start screen.
+    if (hosting || joinCode) location.reload();
+  });
+  const join = () => {
+    const code = normalizeCode($('join-code').value);
+    if (code && code !== mine) goOnline(`?join=${code}`);
+    else $('online-mode').textContent = code ? 'That is your own code.' : 'A code is 8 letters and digits, like K3X-Q2M-7A.';
+  };
+  $('join').addEventListener('click', join);
+  $('join-code').addEventListener('keydown', (event) => event.key === 'Enter' && join());
+  $('copy-invite').addEventListener('click', () => {
+    netplay.copyCode();
+    $('copy-invite').textContent = 'Copied';
+  });
+  $('net-copy').addEventListener('click', () => {
+    netplay.copyCode();
+    $('net-copy').textContent = 'Copied';
+  });
+  $('net-leave').addEventListener('click', () => goOnline(''));
+  if (hosting || joinCode) {
+    $('online-choose').hidden = true;
+    $('start').textContent = hosting ? 'Play online' : 'Join match';
+    $('online-mode').innerHTML = hosting
+      ? `Hosting as <b>${formatCode(mine)}</b>. Send your friend this link, then press Play:`
+      : `Joining <b>${formatCode(joinCode)}</b>'s match. <a href="./" style="color:inherit">Cancel</a>`;
+    $('online-invite').hidden = !hosting;
+    $('invite-link').textContent = inviteLink(mine);
+    $('net').hidden = false;
+    $('net-copy').hidden = !hosting;
+    updateNet(netplay.info());
+  } else {
+    $('online-mode').textContent = `Your code: ${formatCode(mine)}`;
+  }
+}
+function updateNet(info) {
+  if ($('net').hidden) return;
+  const word = {
+    [LINK.IDLE]: ['Online', ''],
+    [LINK.SIGNALLING]: ['Connecting to the server…', ''],
+    [LINK.WAITING]: info.role === 'host' ? ['Waiting for your friend', 'ok'] : ['Calling…', ''],
+    [LINK.NEGOTIATING]: ['Found them, connecting…', ''],
+    [LINK.OPEN]: ['Connected', 'ok'],
+    [LINK.FAILED]: [info.reason || 'Online play failed', 'bad'],
+  }[info.state] ?? ['Online', ''];
+  $('net-state').textContent = netDesync ? 'Desynced: the two games no longer match' : word[0];
+  $('net-state').className = `state ${netDesync ? 'bad' : word[1]}`;
+  const who = info.peer ? `vs #${formatCode(info.peer.slice(1))}` : info.role === 'host' ? `your code ${formatCode(info.code)}` : '';
+  const how = info.state === LINK.OPEN
+    ? `${info.path === 'direct' ? 'direct' : 'relayed'}${info.rttMs != null ? ` · ${info.rttMs} ms` : ''}` : '';
+  $('net-detail').textContent = [who, how].filter(Boolean).join(' · ');
+  setSessionContext('netplay', { state: info.state, path: info.path, rtt_ms: info.rttMs, role: info.role });
+}
+setupOnline();
 
 function toggleFullscreen() {
   if (document.fullscreenElement) document.exitFullscreen();

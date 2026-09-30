@@ -1928,18 +1928,13 @@ bool grStadium_801D42B8(void)
 {
     HSD_GObj* map_gobj;
     Ground* gp;
-    bool result;
 
     map_gobj = Ground_GetMapGObj(2);
     HSD_ASSERT(0x978, map_gobj);
     gp = grStadium_801D4354(map_gobj);
     HSD_ASSERT(0x979, gp);
     if (gp->u.stadium.xC4_b1) {
-        result = false;
-    } else {
-        gp->u.stadium.xD0 =
-            grDatFiles_801C6478(gp->u.stadium.xCC, gp->u.stadium.xC8);
-        result = true;
+        return false;
     }
 #ifdef TARGET_PC
     /* The parse relocates the archive in place, and the buffer may be
@@ -1958,6 +1953,10 @@ bool grStadium_801D42B8(void)
         }
     }
 #endif
+    /* One parse, once the load is in: it relocates the archive in place, so
+     * a second pass over the same buffer walks extern chains the first one
+     * already cleared and never ends (d8f2384 had merged in upstream's
+     * if/else parse ahead of this one, and always returned true). */
     gp->u.stadium.xD0 =
         grDatFiles_801C6478(gp->u.stadium.xCC, gp->u.stadium.xC8);
     return true;
@@ -2144,8 +2143,8 @@ void grStadium_801D4548(Ground_GObj* gobj)
                 int sp60[] = { 3, 4, 6, 9 };
                 int idx;
                 do {
-                    kind = HSD_Randi(ARRAY_SIZE(sp60));
-                } while (gp->u.stadium.xE2 == kind);
+                    idx = HSD_Randi(ARRAY_SIZE(sp60));
+                } while (gp->u.stadium.xE2 == (kind = sp60[idx]));
             } else {
                 kind = 5;
             }

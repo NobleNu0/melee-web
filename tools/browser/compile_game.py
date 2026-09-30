@@ -4,7 +4,8 @@
 Each unit is preprocessed by Clang, has its string literals converted to the
 CP932 execution charset GCC would have used, has its DISC_STRUCT accesses
 lowered to explicit big-endian loads and stores by disc_lower, and is then
-compiled by emcc. Objects land in build/browser/game, where
+compiled by emcc. Its statics are then grouped for the netplay snapshot
+(wasm_state_sections.py). Objects land in build/browser/game, where
 platforms/browser/CMakeLists.txt picks them up.
 """
 import argparse
@@ -14,6 +15,7 @@ import subprocess
 
 from common import BUILD, DISC_LOWER, EMSCRIPTEN, LLVM, ROOT, SYSROOT, WASM_TARGET
 from execution_charset import cp932_literals
+from wasm_state_sections import rewrite as group_state_sections, EXCLUDED as STATE_EXCLUDED
 
 OUT = BUILD / 'game'
 
@@ -69,7 +71,12 @@ def build(source):
         if failed:
             return failed
         failed = run('compile', [EMSCRIPTEN / 'emcc', *COMPILE_FLAGS, '-c', lowered, '-o', obj], err)
-        return failed or {'source': str(rel), 'status': 'passed'}
+        if failed:
+            return failed
+        # Netplay snapshot ranges (src/pc/melee_state.ld's wasm counterpart).
+        if source.stem not in STATE_EXCLUDED:
+            group_state_sections(obj)
+        return {'source': str(rel), 'status': 'passed'}
 
 
 def main():

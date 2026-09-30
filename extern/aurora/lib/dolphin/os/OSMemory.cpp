@@ -339,6 +339,23 @@ static void* AllocMEM1(u32 size) {
   }
   return p;
 }
+#elif defined(__EMSCRIPTEN__)
+#include <cstring>
+#include <malloc.h>
+static void* AllocMEM1(u32 size) {
+  // One address on every page that runs this module. Game state holds MEM1
+  // pointers, and two netplay peers compare that state; what the page
+  // allocates before MEM1 (environment strings, the disc's FST) differs in
+  // size between two players, which moved MEM1 by a few bytes and left it
+  // off the 32-byte alignment GameCube heaps assume. A 256 MB boundary lands
+  // at 0x10000000 while less than that is allocated first, which also keeps
+  // MEM1 above the ARAM range (< 16 MB) and clear of 0x02xxxxxx (see above).
+  void* p = memalign(256u << 20, size);
+  if (p != nullptr) {
+    memset(p, 0, size);
+  }
+  return p;
+}
 #else
 static void* AllocMEM1(u32 size) {
   return calloc(1, size);

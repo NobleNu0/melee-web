@@ -4,8 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Melee</title>
-<!-- Filled in by tools/browser/bundle.py: crash reporting (empty = off) and this build's id. -->
+<!-- Filled in by tools/browser/bundle.py: crash reporting (empty = off), the netplay
+     matchmaking Worker (empty = no online play) and this build's id. -->
 <meta name="sentry-dsn" content="">
+<meta name="melee-signal" content="">
 <meta name="melee-release" content="dev">
 <link rel="icon" href="data:,">
 <link rel="modulepreload" href="./pak-reader.mjs">
@@ -64,6 +66,19 @@
   #start { padding: 10px 36px; font: 600 18px system-ui, sans-serif; border: 0; border-radius: 6px; background: var(--accent); color: #111; cursor: pointer; }
   #start:disabled { opacity: .35; cursor: default; }
   #log { display: none; }
+
+  /* Online play (netplay.mjs): the start screen's choices and the in-game chip. */
+  #online { margin-top: 18px; padding-top: 14px; border-top: 1px solid #2a2a30; display: grid; gap: 8px; justify-items: center; }
+  #online[hidden], #net[hidden] { display: none; }
+  #online .row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; align-items: center; }
+  #online button, #net button { font: inherit; background: none; border: 1px solid #555; color: var(--fg); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+  #online select { font: inherit; background: #111; color: var(--fg); border: 1px solid #444; border-radius: 6px; padding: 2px 6px; margin-left: 6px; }
+  #online input { font: 600 15px ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; width: 9.5em; text-align: center;
+                  background: #111; color: var(--fg); border: 1px solid #444; border-radius: 6px; padding: 5px 8px; }
+  #online .note, #net .note { color: var(--dim); font-size: 12px; }
+  #online .invite { font: 12px ui-monospace, monospace; color: var(--accent); word-break: break-all; }
+  #net { display: flex; flex-direction: column; justify-content: center; gap: 4px; font-size: 12px; max-width: 260px; }
+  #net .state { color: var(--fg); } #net .state.ok { color: var(--ok); } #net .state.bad { color: #f88; }
   @media (max-width: 760px) { #controls { grid-template-columns: repeat(2, auto); } #pad { display: none; } }
 </style>
 <div id="bar">
@@ -82,6 +97,7 @@
     <span class="k" style="color:var(--dim)">or a controller →</span>
   </div>
   <div id="pad" class="chip" aria-live="polite"><button id="gcadapter" hidden title="The official Wii U / Switch GameCube controller adapter (Chrome or Edge)">Connect GameCube adapter</button></div>
+  <div id="net" class="chip" hidden aria-live="polite"><span class="state" id="net-state"></span><span class="note" id="net-detail"></span><span class="row"><button id="net-copy" hidden>Copy invite link</button> <button id="net-leave">Leave online</button></span></div>
   <div id="side" class="chip"><span id="stats">&nbsp;</span><span id="caching"></span><span id="reports" hidden title="If the game crashes, an anonymous report (the error, recent log, browser, OS and GPU; no personal data) is sent to Sentry so it can be fixed.">crash reports on</span><button id="fullscreen" title="Fullscreen">⛶ Fullscreen</button></div>
 </div>
 <div id="stage">
@@ -92,6 +108,19 @@
       <div id="status">Loading…</div>
       <progress id="progress" max="1"></progress>
       <button id="start" disabled>Play</button>
+      <div id="online" hidden>
+        <div class="row" id="online-choose">
+          <button id="host">Host online match</button>
+          <input id="join-code" placeholder="friend's code" maxlength="12" autocomplete="off" spellcheck="false" aria-label="Friend's code">
+          <button id="join">Join</button>
+        </div>
+        <label class="note" id="delay-row">Input delay
+          <select id="net-delay" title="Frames between pressing a button and the game acting on it online. Auto picks from your connection (1 on a fast link, 2 otherwise); lower is snappier but rolls back more.">
+            <option value="">Auto</option><option value="1">1 frame</option><option value="2">2 frames</option><option value="3">3 frames</option><option value="4">4 frames</option>
+          </select></label>
+        <div id="online-mode" class="note"></div>
+        <div id="online-invite" class="row" hidden><span class="invite" id="invite-link"></span><button id="copy-invite">Copy link</button></div>
+      </div>
     </div>
   </div>
 </div>

@@ -121,6 +121,89 @@ It holds game data from your disc, so it is for your own use: do not publish it.
 `MELEE_TEST_BUNDLE=1 MELEE_TEST_URL=http://127.0.0.1:5191/ node tests/browser/shell-e2e.mjs`
 runs the 60 fps cases against the bundle instead of a picked disc.
 
+## Online play (netplay)
+
+The native rollback netcode (`src/pc/net*.c`, docs/netcode-plan.md) runs in
+the page unchanged from the lobby on: time sync, rollback, resume, the
+per-datagram MAC and the desync checks. Only three things are different:
+
+- **Transport.** A page has no UDP. `bundle/netplay.mjs` owns the link and
+  `src/pc/net_web.c` swaps datagrams with it through two rings in shared wasm
+  memory, in place of `sendto`/`recvfrom`. The link is a WebRTC data channel
+  between the two browsers (unordered, no retransmits: UDP's contract), or,
+  when the two networks cannot reach each other directly, a WebSocket relay.
+- **Matchmaking.** `src/pc/net_match_web.c` replaces `net_match.c`'s DHT with
+  the Cloudflare Worker in `netplay-worker/`: one Durable Object per room,
+  named by the host's code, that pairs the two players, forwards the WebRTC
+  offer, answer and ICE candidates, and relays datagrams when needed. Codes
+  are 8 characters of the in-game code keyboard's alphabet, so the native
+  Direct Connect lobby (`gmonlinemode.c`) works as is.
+- **Rollback state.** wasm-ld has no linker scripts, so
+  `tools/browser/wasm_state_sections.py` renames each game object's
+  `.data`/`.bss` segments (minus `melee_state.ld`'s exclusions) and wasm-ld
+  brackets them with `__start_melee_data` .. `__stop_melee_bss`
+  (`src/pc/melee_state.h`). MEM1 is pinned at 0x10000000 so both peers hold
+  the same pointers.
+
+Latency: the engine sends straight into the data channel and the page runs
+its receive gate the moment a datagram arrives (`net_web_pump`), so acks and
+round trips are timed on arrival as natively; `clock.c` gives SDL the
+microsecond monotonic clock (Emscripten rejects `CLOCK_MONOTONIC_RAW`, and
+SDL had fallen back to `Date.now()`). The start screen's **Input delay**
+(Auto, or 1-4 frames) sets `MELEE_NET_DELAY`.
+
+From Slippi's online setup: **frozen Pokemon Stadium** is the profile's default
+(no transformations, and no file loaded mid-match; `?MELEE_FROZEN_STADIUM=0`
+restores them; a session plays the host's value); the frame boundary **reads
+the controllers again after its pacing sleep** (`vi.c` `pc_refresh_input`),
+so the tick consumes input 0.1 ms old instead of ~15 ms (Slippi's lag
+reduction; `MELEE_INPUT_HUD=1` logs the sample age, `MELEE_INPUT_REFRESH=0`
+turns the refresh off); and a **desync** is shown on the online chip and
+reported to Sentry.
+
+Players: **Host online match** on the start screen (`?online=host`) shows an
+invite link (`?join=CODE`); a friend who opens it joins. Both boot into the
+Direct Connect lobby and meet on the same frame, then character select, stage
+select (each picks, a shared coin flip decides) and the match. UCF is forced
+on and the rules are the host's. **Leave online** returns to offline play.
+
+Measured between two Chromes on one machine, over the local Worker
+(`wrangler dev`): direct link in about a second, loopback ping 1-2 ms and a
+fight delay of 1; with 40 ms added each way, 8 ms jitter and 2 % loss
+(`MELEE_NET_SIM_*`): 87-95 ms ping, 67-77 rollbacks in 20 s of play (max
+depth 4), no desync, a 2.29 MiB snapshot taken in 0.18 ms and restored in
+0.07 ms. docs/netcode-plan.md §17 has the details, the full-state hash
+investigation (`MELEE_NET_STATE_DUMP`) and what the snapshot holds.
+
+### Deploying the Worker
+
+Needs a Cloudflare account (the free plan works: Durable Objects on SQLite).
+
+```sh
+cd platforms/browser/netplay-worker
+npx wrangler login        # once, opens the browser
+npx wrangler deploy       # prints https://melee-netplay.<you>.workers.dev
+```
+
+Then build the page with it and deploy the page:
+
+```sh
+python3 tools/browser/bundle.py GALE01.iso --signal-url wss://melee-netplay.<you>.workers.dev --vercel build/browser/melee-vercel
+```
+
+`ALLOWED_ORIGINS` in `wrangler.toml` lists the pages allowed to use it. The
+relay is only for players whose networks cannot open a direct link; each of
+their datagrams is a Durable Object message (about 12 billed requests a
+second per relayed match), so heavy relay use can outgrow the free plan's
+daily requests. Cloudflare Realtime TURN is optional: set `TURN_KEY_ID` and
+`TURN_KEY_API_TOKEN` as Worker secrets and `/ice` hands out credentials, which
+turns most relayed matches back into WebRTC.
+
+Local testing: `npx wrangler dev` in `netplay-worker/`, then open two browser
+profiles on `http://127.0.0.1:5191/?online=host&signal=ws://127.0.0.1:8787`
+and the invite link with the same `&signal=`. (`?signal=` is honoured on
+localhost only.)
+
 ## Why the game is compiled differently here
 
 The decomp reads disc structures through

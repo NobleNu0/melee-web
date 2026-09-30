@@ -12,6 +12,7 @@
  */
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "pc/pc.h"
 
@@ -39,4 +40,26 @@ bool pc_is_legal_stage(unsigned stkind) {
     default:
         return false;
     }
+}
+
+/* MELEE_ONLINE: the page asked for a netplay session (bundle/netplay.mjs):
+ * "host" waits for a friend under our own code, anything else is the code
+ * to call. The profile then boots into the online lobby instead of the
+ * title, and the lobby dials once; after that the lobby's own menu (and the
+ * title's Start, offline) take over. */
+static bool s_online_taken;
+
+bool pc_online_requested(void) {
+    const char* env = getenv("MELEE_ONLINE");
+    return pc_vs_only() && !s_online_taken && env != NULL && env[0] != '\0';
+}
+
+bool pc_online_take(const char** target) {
+    if (!pc_online_requested()) {
+        return false;
+    }
+    const char* env = getenv("MELEE_ONLINE");
+    s_online_taken = true;
+    *target = strcmp(env, "host") == 0 ? NULL : env;
+    return true;
 }
