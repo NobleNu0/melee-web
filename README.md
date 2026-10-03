@@ -81,10 +81,6 @@ select, stage select (each player picks and a shared coin flip decides) and
 the match. The host's rules apply, UCF is forced on, and the start screen sets
 the input delay (Auto, or 1–4 frames).
 
-**Discord:** the Worker can also answer a `/melee` slash command. The command
-posts a public **Join match** link and sends the caller a private **Start
-hosting** link. Invite links unfurl as a card.
-
 Measured between two Chromes over a local Worker: a direct link in about a
 second and a fight delay of 1 frame. With 40 ms added each way, 8 ms jitter and
 2% loss, there was no desync, and a 2.3 MiB snapshot took 0.18 ms to save and
@@ -157,7 +153,7 @@ Any `MELEE_*` query parameter becomes an environment variable, so the upstream
 diagnostic knobs still work, for example
 `?MELEE_FROZEN_STADIUM=0` restores Stadium's transformations.
 
-Deploying the netplay Worker and setting up the Discord command are covered in
+Deploying the netplay Worker is covered in
 [platforms/browser/README.md](platforms/browser/README.md#online-play-netplay).
 
 > **The bundle contains game data from your disc.** It is for your own use. Do

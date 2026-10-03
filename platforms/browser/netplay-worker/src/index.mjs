@@ -11,21 +11,16 @@
 //   ICE servers for WebRTC: Cloudflare's STUN, plus short-lived Cloudflare
 //   TURN credentials when TURN_KEY_ID / TURN_KEY_API_TOKEN are set.
 //
-// POST /discord/interactions
-//   The Discord app's /melee command (src/discord.mjs): an invite link to the
-//   website, where the game runs.
-//
 // Game traffic is authenticated end to end by the engine (net.c's per-datagram
 // MAC), so this relays bytes it cannot read or forge usefully.
 import { DurableObject } from 'cloudflare:workers';
-import { handleInteraction } from './discord.mjs';
 
 const PROTOCOL = '1';
 const CODE = /^[A-Z2-7]{8}$/;
 const STUN = [{ urls: 'stun:stun.cloudflare.com:3478' }];
 
 // ALLOWED_ORIGINS entries are exact origins, or patterns with one "*" for a
-// subdomain (https://*.discordsays.com: a Discord Activity's frame).
+// subdomain (https://*.example.com: preview deployments).
 function originMatches(origin, pattern) {
   if (!pattern.includes('*')) return origin === pattern;
   const [head, tail] = pattern.split('*');
@@ -66,12 +61,8 @@ async function iceServers(env) {
 }
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     const url = new URL(request.url);
-    // Server to server from Discord, signed: no page origin to check.
-    if (url.pathname === '/discord/interactions' && request.method === 'POST') {
-      return handleInteraction(request, env, ctx);
-    }
     const origin = allowedOrigin(request, env);
     if (request.method === 'OPTIONS') return cors(origin, new Response(null, { status: 204 }));
     if (url.pathname === '/health') return cors(origin, new Response('ok'));

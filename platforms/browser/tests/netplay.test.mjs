@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createNetplay, datagramRing, formatCode, inviteLink, localCode, normalizeCode } from '../bundle/netplay.mjs';
+import { datagramRing, formatCode, inviteLink, localCode, normalizeCode } from '../bundle/netplay.mjs';
 
 test('codes are read however a person types or pastes them', () => {
   assert.equal(normalizeCode('k3x-q2m-7a'), 'K3XQ2M7A');
@@ -43,13 +43,4 @@ test('the datagram rings pass bytes in order, wrap, and drop when full or oversi
   assert.deepEqual(got[5], [1, 1, 7]);
   assert.equal(rx.put(new Uint8Array(17)), false, 'oversized');
   assert.equal(u32[link.rx >> 2], 12, 'head counts every datagram ever written');
-});
-
-test('a host opened from a Discord invite hosts the room the invite names', () => {
-  const store = new Map();
-  const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
-  const own = createNetplay({ storage }).localCode();
-  assert.equal(createNetplay({ storage, roomCode: 'svc-bjh-rz' }).localCode(), '#SVCBJHRZ');
-  assert.equal(createNetplay({ storage, roomCode: 'bad!' }).localCode(), own, 'a bad code falls back');
-  assert.equal(createNetplay({ storage }).localCode(), own, 'the saved code is untouched');
 });

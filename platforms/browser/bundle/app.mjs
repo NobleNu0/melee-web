@@ -99,9 +99,7 @@ const signalUrl = (localPage && params.get('signal')) ||
   document.querySelector('meta[name="melee-signal"]')?.content?.trim() || '';
 const joinCode = normalizeCode(params.get('join'));
 const hosting = params.get('online') === 'host';
-// A host link from the Discord app's /melee command names its room.
-const hostRoom = hosting ? normalizeCode(params.get('code')) : null;
-const netplay = createNetplay({ signalUrl, log, roomCode: hostRoom, onChange: (info) => updateNet(info) });
+const netplay = createNetplay({ signalUrl, log, onChange: (info) => updateNet(info) });
 if (netplay.enabled && (hosting || joinCode)) ENV.MELEE_ONLINE = hosting ? 'host' : joinCode;
 // A fixed input delay (the start screen's choice), else the netcode's auto
 // delay (src/pc/net_sync.c: 1 on a fast link, 2 otherwise, in a fight).

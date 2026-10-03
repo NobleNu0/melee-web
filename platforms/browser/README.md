@@ -187,12 +187,11 @@ Needs a Cloudflare account (the free plan works: Durable Objects on SQLite).
 ```sh
 cd platforms/browser/netplay-worker
 npx wrangler login        # once, opens the browser
-npx wrangler deploy --var SITE_URL:https://<your page>/ \
-  --var ALLOWED_ORIGINS:https://<your page>   # prints https://melee-netplay.<you>.workers.dev
+npx wrangler deploy --var ALLOWED_ORIGINS:https://<your page>   # prints https://melee-netplay.<you>.workers.dev
 ```
 
-`wrangler.toml` stays generic (localhost only, Discord off); a deployment's
-own values go in with `--var` as above.
+`wrangler.toml` stays generic (localhost only); a deployment's own origin goes
+in with `--var` as above.
 
 Then build the page with it and deploy the page:
 
@@ -208,32 +207,9 @@ daily requests. Cloudflare Realtime TURN is optional: set `TURN_KEY_ID` and
 `TURN_KEY_API_TOKEN` as Worker secrets and `/ice` hands out credentials, which
 turns most relayed matches back into WebRTC.
 
-### Discord invites (`/melee`)
+### Local testing
 
-The game stays on the website; a Discord app only hands out invites. Its
-`/melee` command (answered by the Worker, `netplay-worker/src/discord.mjs`)
-picks a room code and replies with a public **Join match** link
-(`?join=CODE`) and, to the caller only, **Start hosting**
-(`?online=host&code=CODE`). It is user-installable, so it works in servers,
-DMs and group DMs. (A Discord Activity was considered and dropped: inside
-Discord all traffic goes through Discord's proxy, WebSocket only, with no
-WebRTC, and the frame is not cross-origin isolated.)
-
-Setup, once: in the Developer Portal, copy the app's **Public Key** and deploy
-the Worker with it (`--var DISCORD_PUBLIC_KEY:<key>`, alongside `SITE_URL`); set
-**Interactions Endpoint URL** to `https://<worker>/discord/interactions`
-(Discord verifies it on save); under Installation enable **User Install** and
-**Guild Install**; then register the command with the app's bot token, which
-stays on your machine:
-
-```sh
-cd platforms/browser/netplay-worker
-DISCORD_BOT_TOKEN=... node register-commands.mjs
-```
-
-Invite links also unfurl as a card in Discord (the page's Open Graph tags).
-
-Local testing: `npx wrangler dev` in `netplay-worker/`, then open two browser
+Run `npx wrangler dev` in `netplay-worker/`, then open two browser
 profiles on `http://127.0.0.1:5191/?online=host&signal=ws://127.0.0.1:8787`
 and the invite link with the same `&signal=`. (`?signal=` is honoured on
 localhost only.)

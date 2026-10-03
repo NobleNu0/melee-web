@@ -91,14 +91,10 @@ export function datagramRing(link, base) {
 
 /**
  * The page's netplay link. `signalUrl` is the Worker's origin
- * (wss://… or https://…); without one, online play is off. `roomCode`
- * overrides the code a host waits under.
+ * (wss://… or https://…); without one, online play is off.
  */
-export function createNetplay({ signalUrl, log = console.log, onChange = () => {}, storage, roomCode } = {}) {
-  // A host normally waits under this browser's own code; one opened from an
-  // invite the Discord app made (?online=host&code=, netplay-worker's /melee)
-  // hosts the code that invite already names.
-  const code = normalizeCode(roomCode) ?? localCode(storage);
+export function createNetplay({ signalUrl, log = console.log, onChange = () => {}, storage } = {}) {
+  const code = localCode(storage);
   const base = signalUrl ? new URL(signalUrl) : null;
   let state = LINK.IDLE;
   let reason = '';

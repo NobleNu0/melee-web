@@ -5,16 +5,10 @@ main = "src/index.mjs"
 compatibility_date = "2026-09-01"
 
 [vars]
-# Your deployment's values go in at deploy time, so this file stays generic:
-#   npx wrangler deploy --var SITE_URL:https://YOUR.SITE/ \
-#     --var ALLOWED_ORIGINS:https://YOUR.SITE,http://127.0.0.1:5191 \
-#     --var DISCORD_PUBLIC_KEY:<Developer Portal -> General Information>
-# Pages allowed to use this Worker, comma separated ("*" = any).
+# Pages allowed to use this Worker, comma separated ("*" = any). This file
+# stays generic; your deployment's origin goes in at deploy time:
+#   npx wrangler deploy --var ALLOWED_ORIGINS:https://YOUR.SITE,http://127.0.0.1:5191
 ALLOWED_ORIGINS = "http://127.0.0.1:5191,http://localhost:5191"
-# The Discord app's /melee command (src/discord.mjs): its public key (public
-# by design) and the page its links open. Empty turns the command off.
-DISCORD_PUBLIC_KEY = ""
-SITE_URL = ""
 
 # Optional Cloudflare Realtime TURN, for players whose networks cannot open a
 # direct WebRTC link (the WebSocket relay covers them otherwise):
