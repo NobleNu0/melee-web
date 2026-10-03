@@ -74,6 +74,9 @@ export async function handleInteraction(request, env, ctx) {
   const interaction = JSON.parse(body);
   if (interaction.type === PING) return Response.json({ type: PONG });
   if (interaction.type === APPLICATION_COMMAND && interaction.data?.name === 'melee') {
+    if (!env.SITE_URL) {
+      return Response.json({ type: CHANNEL_MESSAGE, data: { content: 'No SITE_URL is set for this Worker.', flags: EPHEMERAL } });
+    }
     const { invite, hosting } = meleeReplies(interaction, env.SITE_URL);
     // The hosting link goes to the caller alone, as a follow-up once the
     // public reply exists (an interaction answers with one message).

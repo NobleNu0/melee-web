@@ -1,0 +1,19 @@
+name: No game data
+
+# The repository holds code only; players build the web app from their own
+# disc. Fails the push or pull request if a tracked file is game data.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/check_no_game_data.py

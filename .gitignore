@@ -47,3 +47,22 @@ mods/*
 # CTest temporary files
 Testing/
 
+
+# Game data never goes in the repository: disc images, the web bundle's pak
+# and files extracted from a disc. tools/check_no_game_data.py enforces it.
+*.iso
+*.gcm
+*.ciso
+*.rvz
+*.wia
+*.gcz
+*.wbfs
+*.nkit.*
+*.pak
+*.dol
+*.usd
+*.hps
+*.ssm
+*.sem
+*.mth
+*.thp

@@ -40,10 +40,15 @@ Any `MELEE_*` query parameter becomes an environment variable, so the knobs in
 self-contained folder that boots straight into the game, with no disc picker:
 
 ```sh
-python3 tools/browser/build.py --jobs 8                  # the engine, once
 python3 tools/browser/bundle.py /path/to/GALE01.iso      # -> build/browser/bundle
 python3 build/browser/bundle/serve.py                    # http://127.0.0.1:5191/
 ```
+
+The image may be a plain `.iso`/`.gcm` or a `.ciso` (read in place, scrubbed
+blocks as zeros); RVZ, WIA, GCZ and WBFS are refused with how to convert them.
+A missing SDK or engine build is built first (`--rebuild-engine` forces it).
+The deployable folder must fit `--max-mb` (default 100 MB) or the build fails,
+and an output folder inside the checkout that git would track is refused.
 
 `--vercel DIR` also writes a deploy folder and `DIR.zip` for Vercel Drop (or any
 static host): the bundle without `serve.py`, plus a `vercel.json` sending the
@@ -69,13 +74,13 @@ It holds game data from your disc, so it is for your own use: do not publish it.
   stay compiled but unreachable; Training is untouched for a later return.
 - `melee.pak` (`tools/browser/make_pak.py --vs-only`) is a compact virtual disc:
   header, `main.dol`, a rewritten FST and the files back to back, in
-  raw-deflate blocks of 256 KiB. `dvd.c` reads it through the same disc offsets
+  LZMA blocks of 256 KiB. `dvd.c` reads it through the same disc offsets
   as an `.iso`, so the engine is unchanged. Only the files the profile can read
   go in (`VS_ONLY_FILES` in `make_pak.py`, from a `MELEE_DVD_TRACE=1` trace of
   every reachable screen plus each fighter's and legal stage's data): 455 of
   1,209 files; each fighter keeps its default costume and first alternate only
   (`gm_GetNumCostumesForCKind` caps the count at 2 in the profile). About
-  119 MiB against a 1.46 GB disc. A left-out file keeps its
+  80 MiB against a 1.46 GB disc. A left-out file keeps its
   FST entry with offset and length 0, and `dvd.c` logs its name if anything
   asks for it.
 - Shaders: `tools/browser/vs_pipeline_cache.db.gz` holds every GPU pipeline the
@@ -182,8 +187,12 @@ Needs a Cloudflare account (the free plan works: Durable Objects on SQLite).
 ```sh
 cd platforms/browser/netplay-worker
 npx wrangler login        # once, opens the browser
-npx wrangler deploy       # prints https://melee-netplay.<you>.workers.dev
+npx wrangler deploy --var SITE_URL:https://<your page>/ \
+  --var ALLOWED_ORIGINS:https://<your page>   # prints https://melee-netplay.<you>.workers.dev
 ```
+
+`wrangler.toml` stays generic (localhost only, Discord off); a deployment's
+own values go in with `--var` as above.
 
 Then build the page with it and deploy the page:
 
@@ -191,7 +200,7 @@ Then build the page with it and deploy the page:
 python3 tools/browser/bundle.py GALE01.iso --signal-url wss://melee-netplay.<you>.workers.dev --vercel build/browser/melee-vercel
 ```
 
-`ALLOWED_ORIGINS` in `wrangler.toml` lists the pages allowed to use it. The
+`ALLOWED_ORIGINS` lists the pages allowed to use it. The
 relay is only for players whose networks cannot open a direct link; each of
 their datagrams is a Durable Object message (about 12 billed requests a
 second per relayed match), so heavy relay use can outgrow the free plan's
@@ -210,8 +219,8 @@ DMs and group DMs. (A Discord Activity was considered and dropped: inside
 Discord all traffic goes through Discord's proxy, WebSocket only, with no
 WebRTC, and the frame is not cross-origin isolated.)
 
-Setup, once: in the Developer Portal, put the app's **Public Key** in
-`wrangler.toml` (`DISCORD_PUBLIC_KEY`) and deploy the Worker; set
+Setup, once: in the Developer Portal, copy the app's **Public Key** and deploy
+the Worker with it (`--var DISCORD_PUBLIC_KEY:<key>`, alongside `SITE_URL`); set
 **Interactions Endpoint URL** to `https://<worker>/discord/interactions`
 (Discord verifies it on save); under Installation enable **User Install** and
 **Guild Install**; then register the command with the app's bot token, which

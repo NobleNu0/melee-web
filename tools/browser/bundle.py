@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Assemble the portable web app: engine + the player's own disc as melee.pak.
 
-  python3 tools/browser/build.py --jobs 8           # the engine, once
-  python3 tools/browser/bundle.py /path/to/GALE01.iso
-  python3 build/browser/bundle/serve.py             # or copy the folder to any host
+  python3 tools/browser/bundle.py /path/to/GALE01.iso   # .iso, .gcm or .ciso
+  python3 build/browser/bundle/serve.py                 # or copy the folder to any host
 
-The output folder is self-contained: index.html, the engine (wasm with debug
-names stripped), melee.pak (make_pak.py --vs-only: the disc's files the
-VS-only profile reads, compressed) and a standard-library serve.py. The page
-always runs the VS-only profile (src/pc/profile.c). It contains game data from
-your disc, so it is for your own use; do not publish it.
+The repository holds no game data; this is the one step that reads your disc.
+A missing Emscripten SDK (setup_sdk.py) or engine build (build.py) is built
+first. The output folder is self-contained: index.html, the engine (wasm with
+debug names stripped), melee.pak (make_pak.py --vs-only: the disc's files the
+VS-only profile reads, LZMA-compressed) and a standard-library serve.py. The
+page always runs the VS-only profile (src/pc/profile.c). The folder must fit
+--max-mb (default 100 MB, Vercel Hobby's static upload limit) or the build
+fails. It contains game data from your disc, so it is for your own use; do
+not publish it, and it is refused anywhere in the checkout git would track.
 """
 import argparse
 import gzip
@@ -29,10 +32,13 @@ SOURCES = ROOT / 'platforms/browser'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('iso', help='your GALE01 revision 2 .iso/.gcm')
+    parser.add_argument('iso', help='your own GALE01 revision 2 image: .iso, .gcm or .ciso')
     parser.add_argument('--out', default=str(BUILD / 'bundle'))
     parser.add_argument('--repack', action='store_true', help='rebuild melee.pak even if it is up to date')
     parser.add_argument('--jobs', type=int, default=8)
+    parser.add_argument('--rebuild-engine', action='store_true', help='run build.py even if an engine build exists')
+    parser.add_argument('--max-mb', type=float, default=MAX_MB,
+                        help=f'fail if the deployable folder is larger than this many MB (default {MAX_MB:g})')
     parser.add_argument('--sentry-dsn', default=os.environ.get('MELEE_SENTRY_DSN', ''),
                         help='report crashes to this Sentry project (default: $MELEE_SENTRY_DSN; empty = off)')
     parser.add_argument('--signal-url', default=os.environ.get('MELEE_SIGNAL_URL', ''),
@@ -47,9 +53,19 @@ def main():
     if args.signal_url and not re.fullmatch(r'(wss|https)://[\w.-]+(:\d+)?/?', args.signal_url):
         raise SystemExit(f'--signal-url must be the Worker origin, wss://HOST or https://HOST: {args.signal_url}')
 
+    if not iso.is_file():
+        raise SystemExit(f'{iso}: no such file. Pass your own copy of Melee (GALE01 revision 2).')
+    refuse_tracked_output(out)
+    if args.vercel:
+        dest = Path(args.vercel).resolve()
+        refuse_tracked_output(dest)
+        refuse_tracked_output(dest.parent, probe=dest.name + '.zip')  # write_vercel's zip lands beside it
+
     engine = RUNTIME / 'melee_browser.wasm'
-    if not engine.exists():
-        raise SystemExit('No engine build: run tools/browser/build.py first.')
+    if not (SDK / 'upstream/bin/wasm-opt').exists():
+        subprocess.run([sys.executable, ROOT / 'tools/browser/setup_sdk.py'], check=True)
+    if args.rebuild_engine or not engine.exists():
+        subprocess.run([sys.executable, ROOT / 'tools/browser/build.py', '--jobs', str(args.jobs)], check=True)
     out.mkdir(parents=True, exist_ok=True)
 
     pak = out / 'melee.pak'
@@ -58,8 +74,10 @@ def main():
     options = f'{iso}\nvs_only=1\nlzma=1\n'
     if (args.repack or not pak.exists() or not stamp.exists() or stamp.read_text() != options or
             any(p.stat().st_mtime > pak.stat().st_mtime for p in inputs)):
-        subprocess.run([sys.executable, ROOT / 'tools/browser/make_pak.py', iso, pak, '--jobs', str(args.jobs),
-                        '--vs-only', '--lzma'], check=True)
+        packed = subprocess.run([sys.executable, ROOT / 'tools/browser/make_pak.py', iso, pak, '--jobs',
+                                 str(args.jobs), '--vs-only', '--lzma'])
+        if packed.returncode:
+            raise SystemExit(packed.returncode)  # make_pak.py said why
         stamp.write_text(options)
 
     # Function names are kept (about 0.2 MB gzipped): a crash report from a
@@ -100,14 +118,40 @@ def main():
     (out / 'index.html').write_text(page)
     print(f'release melee-web@{engine_hash}-{pak_id}, crash reports {"on" if args.sentry_dsn else "off"}, '
           f'online play {args.signal_url or "off"}')
-    if args.vercel:
-        write_vercel(out, Path(args.vercel).resolve())
-
-    total = sum(p.stat().st_size for p in out.iterdir() if p.is_file())
     for p in sorted(out.iterdir()):
         if p.is_file() and not p.name.startswith('.'):
             print(f'{p.stat().st_size / 2**20:9.1f} MiB  {p.name}')
-    print(f'{total / 2**20:9.1f} MiB  {out}')
+    # What a static host receives: everything but the dotfiles and serve.py.
+    total = sum(p.stat().st_size for p in deployable(out))
+    print(f'{total / 1e6:9.1f} MB   {out} (deployable; limit {args.max_mb:g} MB)')
+    if total > args.max_mb * 1e6:
+        raise SystemExit(f'The bundle is {total / 1e6:.1f} MB, over the {args.max_mb:g} MB budget. '
+                         'Something the VS-only profile does not need went into melee.pak '
+                         '(make_pak.py VS_ONLY_FILES), or the engine grew.')
+    if args.vercel:
+        write_vercel(out, Path(args.vercel).resolve())
+
+
+MAX_MB = 100
+
+
+def deployable(folder):
+    return [p for p in folder.rglob('*')
+            if p.is_file() and p.name != 'serve.py' and not p.relative_to(folder).as_posix().startswith('.')]
+
+
+def refuse_tracked_output(path, probe='index.html'):
+    """The bundle holds game data: never write it where git could commit it.
+    The probe is a page file, not melee.pak: *.pak is ignored everywhere, the
+    folder's other files are not."""
+    try:
+        path.relative_to(ROOT)
+    except ValueError:
+        return  # outside the checkout
+    ignored = subprocess.run(['git', '-C', ROOT, 'check-ignore', '-q', path / probe], capture_output=True)
+    if ignored.returncode == 1:
+        raise SystemExit(f'{path}: inside the checkout and not ignored by git, so the game data could be '
+                         'committed. Write the bundle under build/ or outside the repository.')
 
 
 # Static hosting on Vercel. The engine's threads need a cross-origin isolated
@@ -133,13 +177,10 @@ def write_vercel(bundle, dest):
     if dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True)
-    for p in sorted(bundle.iterdir()):
-        if p.name.startswith('.') or p.name == 'serve.py':
-            continue
-        if p.is_dir():
-            shutil.copytree(p, dest / p.name)
-        else:
-            shutil.copy2(p, dest / p.name)
+    for p in deployable(bundle):
+        target = dest / p.relative_to(bundle)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(p, target)
     (dest / 'vercel.json').write_text(json.dumps(VERCEL_JSON, indent=2) + '\n')
     archive = shutil.make_archive(str(dest), 'zip', root_dir=dest)
     files = [p for p in dest.rglob('*') if p.is_file()]

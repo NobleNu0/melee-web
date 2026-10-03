@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Pack a GALE01 rev 2 disc image into melee.pak for the bundled web app.
 
+The image is the player's own: a plain .iso/.gcm, or a CISO read in place.
+
 The pak is a compact virtual disc: the 0x2440-byte header region, main.dol,
 a rewritten FST and every FST file laid out back to back, with the gaps and
 junk padding of the real image gone. platforms/browser/dvd.c reads it through
@@ -140,12 +142,42 @@ def align(value, to=ALIGN):
     return (value + to - 1) // to * to
 
 
+# Compressed containers this script cannot read, by their magic. Dolphin
+# converts each of them back to a plain image.
+CONVERT_FIRST = {b'RVZ\x01': 'RVZ', b'WIA\x01': 'WIA', b'\x01\xc0\x0b\xb1': 'GCZ', b'WBFS': 'WBFS'}
+CISO_MAGIC = b'CISO'
+CISO_HEADER = 0x8000  # magic, u32 block size, then one present/absent byte per block
+
+
 class Disc:
+    """A GALE01 revision 2 image: a plain .iso/.gcm, or a CISO (the format
+    Nintendont and many dumpers write), read in place without expanding it."""
+
     def __init__(self, path):
         self.file = open(path, 'rb')
+        magic = self.file.read(4)
+        if magic in CONVERT_FIRST:
+            raise SystemExit(
+                f'{path}: this is a {CONVERT_FIRST[magic]} image. Convert it to a plain ISO first: in Dolphin, '
+                'right-click the game -> Convert File... -> Format: ISO (or `dolphin-tool convert -f iso -i IN -o OUT`).')
+        self.ciso = None
+        if magic == CISO_MAGIC:
+            self.file.seek(4)
+            block = struct.unpack('<I', self.file.read(4))[0]
+            present = self.file.read(CISO_HEADER - 8)
+            stored, self.ciso = 0, (block, [])
+            for flag in present:
+                self.ciso[1].append(CISO_HEADER + stored * block if flag else None)
+                stored += bool(flag)
         self.header = self.read(0, HEADER_REGION)
-        if self.header[:6] != b'GALE01' or self.header[7] != 2:
-            raise SystemExit(f'{path}: not a plain GALE01 revision 2 image (.iso/.gcm)')
+        game_id, revision = self.header[:6], self.header[7]
+        if game_id != b'GALE01':
+            known = {b'GALP01': 'the PAL (Europe) release', b'GALJ01': 'the Japanese release'}
+            what = known.get(game_id, f'game id {game_id.decode("ascii", "replace")!r}')
+            raise SystemExit(f'{path}: this is {what}. The web app needs Super Smash Bros. Melee USA (GALE01).')
+        if revision != 2:
+            raise SystemExit(f'{path}: this is GALE01 revision {revision}. The web app needs revision 2 '
+                             '(NTSC-U 1.02, the tournament standard).')
         self.dol_offset = be32(self.header, 0x420)
         self.fst_offset = be32(self.header, 0x424)
         self.fst = bytearray(self.read(self.fst_offset, be32(self.header, 0x428)))
@@ -167,11 +199,33 @@ class Disc:
             self.files.append((i, name, offset, length))
 
     def read(self, offset, size):
-        self.file.seek(offset)
-        data = self.file.read(size)
+        if self.ciso is None:
+            self.file.seek(offset)
+            data = self.file.read(size)
+        else:
+            data = self.read_ciso(offset, size)
         if len(data) != size:
             raise SystemExit('Short read: the disc image is truncated.')
         return data
+
+    def read_ciso(self, offset, size):
+        block, where = self.ciso
+        out = bytearray()
+        while size > 0:
+            n, skip = divmod(offset, block)
+            take = min(size, block - skip)
+            if n >= len(where):
+                break  # past the map: short read
+            if where[n] is None:
+                out += bytes(take)  # a block the dumper scrubbed reads as zeros
+            else:
+                self.file.seek(where[n] + skip)
+                chunk = self.file.read(take)
+                out += chunk
+                if len(chunk) != take:
+                    break
+            offset, size = offset + take, size - take
+        return bytes(out)
 
 
 def stub_movie(disc, offset, length, frames):
@@ -226,6 +280,12 @@ def compress_lzma(raw):
 
 def build(iso, out, block_size, keep_movies, jobs, vs_only=False, use_lzma=False):
     disc = Disc(iso)
+    if vs_only:
+        present = {name for _, name, _, length in disc.files if length}
+        missing = sorted(VS_ONLY_FILES - present)
+        if missing:
+            raise SystemExit(f'{iso}: the image lacks files the VS-only app needs ({", ".join(missing[:8])}'
+                             f'{", ..." if len(missing) > 8 else ""}). Is it a modified or trimmed copy?')
     frames = {} if keep_movies else donor_frames(disc)
     dol = disc.read(disc.dol_offset, disc.fst_offset - disc.dol_offset)
 
@@ -311,7 +371,7 @@ def build(iso, out, block_size, keep_movies, jobs, vs_only=False, use_lzma=False
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('iso', type=Path)
+    parser.add_argument('iso', type=Path, help='your GALE01 revision 2 image (.iso, .gcm or .ciso)')
     parser.add_argument('out', type=Path)
     parser.add_argument('--block-size', type=int, default=256 * 1024)
     parser.add_argument('--keep-movies', action='store_true')
