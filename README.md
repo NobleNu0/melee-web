@@ -2,6 +2,11 @@
 
 **A web-native Super Smash Bros. Melee, trimmed and tuned for 1v1 versus.**
 
+*A first visit with an empty cache, recorded at 60 fps against the local
+`serve.py`: about 15 seconds from opening the page to "Go!", with the menus
+driven at a person's pace. On a real host, add the time to download the game
+data, which streams in on demand.*
+
 This is a fork of [999sian/melee-pc](https://github.com/999sian/melee-pc), the
 native PC port of Melee (NTSC-U 1.02) built from
 [doldecomp/melee](https://github.com/doldecomp/melee) on
@@ -277,8 +282,8 @@ python3 tools/check_no_game_data.py
 python3 tools/check_no_game_data.py --history origin/master..HEAD   # every blob your commits add
 ```
 
-The one binary the tree carries besides fonts and icons is a shader-pipeline
-seed of GPU render state (no textures, models or audio).
+Besides aurora's own README images, the one binary in the tree is a
+shader-pipeline seed of GPU render state (no textures, models or audio).
 
 ## Relationship to upstream
 
