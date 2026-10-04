@@ -75,8 +75,9 @@ transport and the matchmaking are new.
   the linker brackets them for snapshots. MEM1 is pinned at a fixed address so
   both peers hold the same pointers.
 
-To play, choose **Host online match** on the start screen and send your friend
-the invite link. Both players land in the Direct Connect lobby, then character
+With a bundle built for online play ([setup step 5](#5-online-play-optional)),
+choose **Host online match** on the start screen and send your friend the
+invite link. Both players land in the Direct Connect lobby, then character
 select, stage select (each player picks and a shared coin flip decides) and
 the match. The host's rules apply, UCF is forced on, and the start screen sets
 the input delay (Auto, or 1–4 frames).
@@ -98,68 +99,155 @@ second and a fight delay of 1 frame. With 40 ms added each way, 8 ms jitter and
 A bar above the game lists the keyboard controls and draws the connected
 controller live.
 
-## Requirements
+## Setup
 
-- A desktop browser with WebGPU. Chrome and Edge are tested (on Apple Silicon,
-  and Chromium on Linux with Intel Arc). Safari, Firefox and mobile browsers
-  are untested. There is no WebGL fallback.
+### 1. What you need
+
 - **Your own copy of Melee USA revision 2 (GALE01)** as `.iso`, `.gcm` or
   `.ciso`. Scrubbed images work. Convert `.rvz`, `.wia` or `.gcz` to ISO in
-  Dolphin first; the build tells you if it gets one.
-- Building: Python 3, CMake, Ninja, Git, LLVM 22 with LibTooling, and a real
-  GCC 12+ on `PATH` (the build compares its big-endian lowering against GCC).
+  Dolphin first (right-click the game, **Convert File...**, format ISO); the
+  build tells you if it gets one.
+- **A desktop browser with WebGPU.** Chrome and Edge are tested, on Apple
+  Silicon and on Linux with Intel Arc graphics. Safari, Firefox and mobile
+  browsers are untested, and there is no WebGL fallback.
+- **A computer to build on.** The build has been run on macOS (Apple Silicon)
+  only. The Linux steps below are untested, and Windows is unknown.
 
-## Build and run
+### 2. Install the build tools
 
-The repository holds code only. One command turns your disc into the web app:
+The build needs Python 3, CMake, Ninja, Git, LLVM 22 with its development
+libraries, and a real GCC 12 or newer. GCC is only used to check the build's
+big-endian rewriting against it, but the build won't run without it.
+
+**macOS** ([Homebrew](https://brew.sh)):
 
 ```sh
+brew install python cmake ninja git llvm@22 gcc
+```
+
+That puts LLVM where the build looks by default
+(`/opt/homebrew/opt/llvm@22`), and GCC on `PATH` as `gcc-16`. On an Intel Mac,
+Homebrew uses `/usr/local`, so also run
+`export LLVM_ROOT=/usr/local/opt/llvm@22`.
+
+**Linux (Debian/Ubuntu, untested):** add LLVM's apt repository
+([apt.llvm.org](https://apt.llvm.org)), then:
+
+```sh
+sudo apt install python3 cmake ninja-build git gcc-13 clang-22 llvm-22-dev libclang-cpp22-dev
+export LLVM_ROOT=/usr/lib/llvm-22
+```
+
+GCC must be on `PATH` under a versioned name, `gcc-12` through `gcc-16`. Plain
+`gcc` isn't accepted; on a Mac it's really Apple's clang.
+
+### 3. Build
+
+```sh
+git clone https://github.com/NobleNu0/melee-web.git
+cd melee-pc
 python3 tools/browser/bundle.py /path/to/your/melee.iso
-python3 build/browser/bundle/serve.py              # http://127.0.0.1:5191/
 ```
 
 `bundle.py` does the whole build:
 
 1. It checks the image: GALE01, revision 2, with every file the VS profile
    needs. A wrong region, revision or format gets a clear error.
-2. On a first run it installs the pinned Emscripten SDK (`setup_sdk.py`) and
-   builds the engine (`build.py`). `--rebuild-engine` forces a rebuild after
-   you change the code.
+2. On the first run it downloads the pinned Emscripten SDK into
+   `build/browser/emsdk` and compiles the engine, about 1,000 game source
+   files. That takes a while. Later runs reuse both. `--rebuild-engine` forces
+   a rebuild after you change the code.
 3. It packs `melee.pak` from your disc: only the VS profile's files,
-   LZMA-compressed. A pak from your CISO is byte-identical to one from the
-   same disc as an ISO.
-4. It writes a self-contained folder, `build/browser/bundle`, about 89 MB, that
-   boots straight into the game.
+   LZMA-compressed. A pak from your CISO is byte-identical to one from the same
+   disc as an ISO.
+4. It writes a self-contained folder, `build/browser/bundle`, about 89 MB.
 
-The build fails if the deployable folder is over 100 MB (`--max-mb` changes
-the budget). It also refuses to write the bundle anywhere in the checkout that
-git would track, so your game data can't end up in a commit.
+The build fails if the folder would be over 100 MB (`--max-mb` changes the
+budget). It also refuses to write the bundle anywhere in the checkout that git
+would track, so your game data can't end up in a commit.
 
-The folder works on any static host that supports HTTP Range requests. The engine runs threads, which need cross-origin isolation
-(COOP/COEP headers). `serve.py` sends those headers; on a host that can't,
-`coi-sw.js` adds them.
+### 4. Play
 
-Options:
+```sh
+python3 build/browser/bundle/serve.py
+```
+
+Open <http://127.0.0.1:5191/> in Chrome or Edge and press **Play**. The first
+visit downloads the game data and prepares shaders; later visits start from
+the browser's cache.
+
+> **The bundle contains game data from your disc.** It is for your own use.
+> Run it locally with `serve.py`, or host it only where you alone can reach it.
+> Don't publish it.
+
+`serve.py` sends the cross-origin isolation headers (COOP/COEP) that the
+engine's threads need. A host that can't send them gets them from `coi-sw.js`,
+a service worker the page installs. Any static host you use must also support
+HTTP Range requests.
+
+### 5. Online play (optional)
+
+A default build is offline only, and the start screen has no online option.
+Online play needs a netplay Worker, a small Cloudflare service that pairs the
+players and relays traffic when needed. The repository isn't tied to any
+Cloudflare account; you deploy your own, and the free plan is enough.
+
+**Both players' bundles must point at the same Worker.** In a group of
+friends, one person deploys it and shares its address, and everyone builds
+with that address.
+
+Deploy it once, from a Cloudflare account:
+
+```sh
+cd platforms/browser/netplay-worker
+npx wrangler login
+npx wrangler deploy --var ALLOWED_ORIGINS:'*'
+```
+
+`wrangler deploy` prints the Worker's address,
+`https://melee-netplay.<your-subdomain>.workers.dev`. `ALLOWED_ORIGINS` lists
+the page addresses allowed to use it. `'*'` allows any page, which suits a
+group where everyone runs their own copy. To restrict it, give a
+comma-separated list instead, such as `http://127.0.0.1:5191`. Game traffic
+is authenticated end to end by the engine either way.
+
+Then each player builds with that address, as `wss://`:
+
+```sh
+python3 tools/browser/bundle.py /path/to/your/melee.iso --signal-url wss://melee-netplay.<your-subdomain>.workers.dev
+```
+
+Now the start screen offers **Host online match**. The host sends the invite
+link it shows, and the friend opens it in their own copy. Because each player
+runs their own bundle, the friend replaces the start of the link
+(`http://127.0.0.1:5191/`) with wherever their copy runs, keeping
+`?join=CODE`. Alternatively, they choose **Join** and type the host's code.
+
+TURN relays, local testing with `wrangler dev`, and what the relay costs on
+Cloudflare's free plan are covered in
+[platforms/browser/README.md](platforms/browser/README.md#online-play-netplay).
+
+### Build options
 
 | Flag | Effect |
 |---|---|
-| `--signal-url wss://…` | Turn on online play through your deployed netplay Worker. Without it the app is offline only. |
+| `--signal-url wss://…` | Turn on online play through your netplay Worker (step 5). Without it the app is offline only. |
 | `--sentry-dsn DSN` | Send crash reports to your Sentry project: the PANIC line, wasm stack, recent log, and browser/OS/GPU. No IP address or other personal data, no sessions, no replays. Without a DSN nothing is loaded or sent. |
-| `--vercel DIR` | Also write a static deploy folder and `DIR.zip` with `vercel.json` (COOP/COEP headers), under Vercel Hobby's 100 MB limit. |
+| `--vercel DIR` | Also write a static deploy folder and `DIR.zip` with `vercel.json` (COOP/COEP headers), under Vercel Hobby's 100 MB limit. For a private deployment only (see the note under step 4). |
 | `--max-mb N` | The size budget for the deployable folder (default 100). |
 | `--rebuild-engine` | Rebuild the engine even if a build exists. |
+| `--out DIR` | Write the bundle somewhere other than `build/browser/bundle`. |
 
 Any `MELEE_*` query parameter becomes an environment variable, so the upstream
-diagnostic knobs still work, for example
-`?MELEE_FROZEN_STADIUM=0` restores Stadium's transformations.
-
-Deploying the netplay Worker is covered in
-[platforms/browser/README.md](platforms/browser/README.md#online-play-netplay).
-
-> **The bundle contains game data from your disc.** It is for your own use. Do
-> not publish it or host it publicly.
+diagnostic knobs still work. For example, `?MELEE_FROZEN_STADIUM=0` restores
+Pokémon Stadium's transformations.
 
 ## Testing
+
+The end-to-end test drives Google Chrome through Playwright. Install
+Playwright anywhere outside the repository, for example
+`npm install --prefix ~/melee-test playwright`, then point
+`PLAYWRIGHT_MODULE` at it:
 
 ```sh
 python3 build/browser/bundle/serve.py &
@@ -199,7 +287,8 @@ state (no textures, models or audio).
 The engine, game code and native platforms come from
 [999sian/melee-pc](https://github.com/999sian/melee-pc). This fork changes them
 only where the web or the VS profile needs it, and leaves the native platforms
-in place, though only the web app is tested here. For the full game on desktop or mobile, use upstream's
+in place, though only the web app is tested here. For the full game on desktop
+or mobile, use upstream's
 [releases](https://github.com/999sian/melee-pc/releases) and its
 [README](https://github.com/999sian/melee-pc#readme).
 
