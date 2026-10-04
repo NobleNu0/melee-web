@@ -5,7 +5,6 @@
 #include <string.h>
 
 #include "forward.h"
-#include "gm_1884.h"
 #include "gm_18A1.h"
 #include "gm_unsplit.h"
 #include "gmmain_lib.h"
@@ -1452,35 +1451,6 @@ static inline int fn_8016CBE8_inline(void)
     return -1;
 }
 
-void gm_Scene_Training_OnFrame(void)
-{
-    int i;
-    VsSceneController* tmp = &controller;
-    PAD_STACK(0x28);
-
-    fn_8016CFE0_inline();
-
-    fn_8016758C();
-    if (gm_GetDbPauseFlag(2) != 0) {
-        fn_8016CBE8_inline();
-        gm_DoUnpauseChecksAndRoutine(tmp, 2);
-        if (tmp->state.pause_timer != 0) {
-            tmp->state.pause_timer--;
-        }
-    } else {
-        gm_DoPauseChecksAndRoutine(tmp, 2);
-        if (tmp->state.unpause_timer != 0) {
-            tmp->state.unpause_timer--;
-        }
-    }
-    fn_8016CD98(tmp);
-    tmp->state.match_result = gm_GetMatchOutcome();
-    if (tmp->state.match_result != OUTCOME_NONE) {
-        fn_8016C7F0();
-        gm_801A4B60();
-    }
-}
-
 bool fn_8016D538(void)
 {
     bool result = true;
@@ -2156,29 +2126,6 @@ void gm_Scene_SuddenDeath_OnEnter(void* user_data)
     ifStatus_802F6EA4(1, -1, -1, 0, fn_8016B7B4, fn_8016B7F8);
     ifTime_CreateTimers();
     ifStatus_802F665C(data->rules.x0_3);
-}
-
-void gm_Scene_Training_OnEnter(void* user_data)
-{
-    StartMeleeData* data = user_data;
-    struct VsSceneController* tmp2;
-
-    fn_8016E730(data);
-    Ground_801C1154();
-    grStadium_801D410C();
-    un_802FD404();
-    tmp2 = &controller;
-    ftLib_EnableAllInput();
-    Stage_802252E4(tmp2->start.stkind, NULL);
-    grStadium_801D4040();
-    if (!controller.start.x1_3) {
-        ifStatus_802F6EA4(4, -1, -1, 0, 0, fn_8016B784);
-    } else {
-        ifStatus_802F6EA4(8, -1, -1, 0, 0, fn_8016B784);
-    }
-    un_802FD428();
-    ifStatus_802F665C(data->rules.x0_3);
-    fn_8018A000();
 }
 
 float gm_8016ECE8(void)

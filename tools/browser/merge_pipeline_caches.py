@@ -3,7 +3,8 @@
 
 Each input is the /cache/pipeline_cache.db of one browser session that played
 part of the VS-only profile (title, menus, every fighter, every legal stage,
-Training). The union, gzipped, is tools/browser/vs_pipeline_cache.db.gz;
+and Training, which has since been removed; its few extra pipelines are
+harmless). The union, gzipped, is tools/browser/vs_pipeline_cache.db.gz;
 tools/browser/bundle.py ships it as initial_pipeline_cache.db, which aurora
 imports on a first visit and compiles behind "Preparing graphics" instead of
 on first use during play (pipeline_cache.cpp, seed_pipeline_cache).

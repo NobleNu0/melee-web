@@ -53,7 +53,7 @@ STUB_FRAMES = 64  # > the 32-frame preload ring in lbmthp.c
 
 # What the VS-only profile reads, from a file-open trace (dvd.c
 # MELEE_DVD_TRACE) of the whole reachable game -- title, character and stage
-# select, a match on every legal stage, pause, results, Training -- plus the
+# select, a match on every legal stage, pause, results -- plus the
 # files every selectable character and every legal stage can reach but one
 # trace does not (another fighter's data, an alternate track). Everything
 # else is left out; a miss is logged by name by dvd.c. The US game opens the
@@ -63,8 +63,8 @@ VS_ONLY_FILES = {
     'GrNBa.dat', 'GrNLa.dat', 'GrOp.dat', 'GrSt.dat', 'GrIz.dat', 'GrPs.usd',
     'GrPs1.dat', 'GrPs2.dat', 'GrPs3.dat', 'GrPs4.dat',
     # Scenes and interface: title, character/stage select, pause, results,
-    # Training, HUD, common items, memory-card and rumble data read at boot.
-    'GmTtAll.usd', 'GmPause.usd', 'GmRst.usd', 'GmTrain.usd', 'SdTrain.usd',
+    # HUD, common items, memory-card and rumble data read at boot.
+    'GmTtAll.usd', 'GmPause.usd', 'GmRst.usd',
     'MnSlChr.usd', 'MnSlMap.usd', 'MnExtAll.usd', 'SdSlChr.usd', 'SdRst.usd', 'SdIntro.dat',
     'IfAll.usd', 'IfCoGet.dat', 'ItCo.usd', 'LbBf.dat', 'LbRb.dat', 'LbRf.dat',
     'LbMcGame.usd', 'NtMemAc.usd', 'PdPm.dat',

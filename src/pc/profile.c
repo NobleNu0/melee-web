@@ -4,8 +4,8 @@
  * no memory-card scene or opening movie, Start goes straight to VS character
  * select (1v1 against a CPU by default), everything is unlocked, nothing is
  * saved, and stage select offers only the tournament-legal stages. Adventure,
- * Classic, trophies and the other modes stay compiled but unreachable, and
- * Training is kept intact for a later return.
+ * Classic, trophies and the other modes stay compiled but unreachable;
+ * Training mode has been removed.
  *
  * The bundled web app (tools/browser/bundle.py) always runs this profile:
  * its melee.pak leaves out movies, trophies and every other stage.

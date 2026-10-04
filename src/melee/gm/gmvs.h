@@ -115,7 +115,6 @@
 /* 16CD98 */ void fn_8016CD98(VsSceneController*);
 /* 16CF4C */ void fn_8016CF4C(int, MatchOutcome);
 /* 16CFE0 */ void fn_8016CFE0(void);
-/* 16D32C */ void gm_Scene_Training_OnFrame(void);
 /* 16D538 */ bool fn_8016D538(void);
 /* 16D634 */ void fn_8016D634(void);
 /* 16D800 */ void gm_Scene_Vs_OnFrame(void);
@@ -129,7 +128,6 @@
 /* 16E934 */ void gm_Scene_Vs_OnEnter(void*);
 /* 16E9C8 */ void gm_Scene_Vs_OnExit(void*);
 /* 16EBC0 */ void gm_Scene_SuddenDeath_OnEnter(void*);
-/* 16EC28 */ void gm_Scene_Training_OnEnter(void*);
 /* 16ECE8 */ float gm_8016ECE8(void);
 /* 16EDDC */ bool gm_8016EDDC(int, struct PlayerInitData*);
 /* 16EF98 */ bool fn_8016EF98(int);

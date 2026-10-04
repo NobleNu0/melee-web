@@ -63,14 +63,14 @@ It holds game data from your disc, so it is for your own use: do not publish it.
   off, friendly fire on. Stage select shows only Battlefield, Final
   Destination, Dream Land, Yoshi's Story, Fountain of Dreams and Pokemon
   Stadium, as a 3x2 grid of larger chips with Random beside it. Backing out of
-  CSS returns to the title. Adventure, Classic, trophies and the other modes
-  stay compiled but unreachable; Training is untouched for a later return.
+  CSS returns to the title. Training mode is removed; Adventure, Classic,
+  trophies and the other modes stay compiled but unreachable.
 - `melee.pak` (`tools/browser/make_pak.py --vs-only`) is a compact virtual disc:
   header, `main.dol`, a rewritten FST and the files back to back, in
   LZMA blocks of 256 KiB. `dvd.c` reads it through the same disc offsets
   as an `.iso`, so the engine is unchanged. Only the files the profile can read
   go in (`VS_ONLY_FILES` in `make_pak.py`, from a `MELEE_DVD_TRACE=1` trace of
-  every reachable screen plus each fighter's and legal stage's data): 455 of
+  every reachable screen plus each fighter's and legal stage's data): 324 of
   1,209 files; each fighter keeps its default costume and first alternate only
   (`gm_GetNumCostumesForCKind` caps the count at 2 in the profile). About
   80 MiB against a 1.46 GB disc. A left-out file keeps its
@@ -276,7 +276,7 @@ python3 build/browser/bundle/serve.py &
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node tests/browser/shell-e2e.mjs
 ```
 
-Headed Chrome boots `title`, `vs`, `vs-cpu4`, `training` and `css` (Start at
+Headed Chrome boots `title`, `vs`, `vs-cpu4` and `css` (Start at
 the title opening VS character select), and fails any case below 58.5 fps or
 above a 33.4 ms p99 frame time. Boot-scene cases must also log the scene they
 asked for, so holding 60 fps on the wrong screen cannot pass. `build.py` runs

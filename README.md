@@ -52,14 +52,17 @@ versus client. The web app always runs with it on.
   the RNG sequence matches retail).
 - **UCF on.** UCF 0.8x dashback and shield drop are the default.
 
-Adventure, Classic, All-Star, the Stadium modes, Event Match and trophies stay
-compiled but can't be reached. Training is untouched, for a later return.
+Training mode is removed, code and data. Adventure, Classic, All-Star, the
+Stadium modes, Event Match and trophies stay compiled but can't be reached:
+their data is already out of the bundle, and their code is about half a
+megabyte of the engine, kept so decomp fixes can still be synced from
+upstream.
 
 ## What's optimized for the web
 
 | Area | What this fork does |
 |---|---|
-| Download | `melee.pak` holds only the 455 of the disc's 1,209 files the VS profile reads (found by tracing every reachable screen, fighter and legal stage). It's a compact virtual disc in 256 KiB LZMA blocks that the engine reads at the same offsets as an `.iso`. The engine's wasm ships gzipped (about 5 MiB). The whole deployable folder is about 89 MB. |
+| Download | `melee.pak` holds only the 324 of the disc's 1,209 files the VS profile reads (found by tracing every reachable screen, fighter and legal stage). It's a compact virtual disc in 256 KiB LZMA blocks that the engine reads at the same offsets as an `.iso`. The engine's wasm ships gzipped (about 5 MiB). The whole deployable folder is about 89 MB. |
 | Loading | Blocks are fetched with HTTP Range requests only when a read needs them, decoded in a worker pool and kept in the Cache API, so a second visit downloads nothing. After boot a worker prefetches the rest of the game data off the game's thread. |
 | Shaders | The app ships every GPU pipeline the profile draws (865) and compiles them up front behind "Preparing graphics", so the first match doesn't stutter. |
 | Frame rate | Holds 60 fps in every scene the end-to-end tests reach, in desktop Chrome. Frame pacing uses a microsecond monotonic clock (Emscripten rejects `CLOCK_MONOTONIC_RAW`, so SDL had fallen back to `Date.now()`, which only ticks in whole milliseconds). |

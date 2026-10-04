@@ -39,7 +39,6 @@
 #include "gmtoycollection.h"
 #include "gmtoygallery.h"
 #include "gmtoylottery.h"
-#include "gmtrainingmode.h"
 #include "gmvsmelee.h"
 #include "gmvsmode.h"
 #include "gmonlinemode.h"
@@ -89,13 +88,6 @@ static GameScene scenes[] = {
         GS_SUDDEN_DEATH,
         gm_Scene_Vs_OnFrame,
         gm_Scene_SuddenDeath_OnEnter,
-        gm_Scene_Vs_OnExit,
-        NULL,
-    },
-    {
-        GS_TRAINING,
-        gm_Scene_Training_OnFrame,
-        gm_Scene_Training_OnEnter,
         gm_Scene_Vs_OnExit,
         NULL,
     },
@@ -612,14 +604,6 @@ static GameMode modes[] = {
         NULL,
         NULL,
         gm_Mode_Tournament_States,
-    },
-    {
-        true,
-        GM_TRAINING,
-        gm_Mode_Training_OnLoad,
-        NULL,
-        gm_Mode_Training_OnInit,
-        gm_Mode_Training_States,
     },
     {
         false,

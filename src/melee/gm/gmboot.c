@@ -62,8 +62,6 @@ u8 pc_boot_scene(void)
             scene = GM_DEBUG_VS;
         } else if (strcmp(want, "classic") == 0) {
             scene = GM_CLASSIC;
-        } else if (strcmp(want, "training") == 0) {
-            scene = GM_TRAINING;
         } else if (strcmp(want, "unranked") == 0) {
             scene = GM_ONLINE;
             gmOnline_SetKind(ONLINE_KIND_UNRANKED);
@@ -75,7 +73,7 @@ u8 pc_boot_scene(void)
             gmOnline_SetKind(ONLINE_KIND_RANKED);
         } else {
             OSReport("MELEE_BOOT_SCENE: unknown scene '%s'; valid values are "
-                     "title, vs, classic, training, unranked, direct, ranked\n",
+                     "title, vs, classic, unranked, direct, ranked\n",
                      want);
         }
     }

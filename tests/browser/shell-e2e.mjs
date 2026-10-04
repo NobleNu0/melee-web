@@ -25,7 +25,6 @@ await mkdir(output, { recursive: true });
 const cases = [
   { name: 'title', env: {}, keys: ['x', 'x', 'x', 'Enter', 'Enter'] },
   { name: 'vs', env: { MELEE_BOOT_SCENE: 'vs' } },
-  { name: 'training', env: { MELEE_BOOT_SCENE: 'training' } },
   // Four CPUs on Final Destination: the heaviest scene, and it stays busy unattended.
   { name: 'vs-cpu4', env: { MELEE_BOOT_SCENE: 'vs', MELEE_DEBUG_VS: 'cpu4' } },
   // The VS-only profile: Start at the title opens VS character select.
