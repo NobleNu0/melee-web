@@ -47,11 +47,11 @@ The full text is in [`COPYING`](COPYING).
 ## 3. Third-party components
 
 - `extern/aurora/` — aurora, MIT. See `extern/aurora/LICENSE`.
-- `resources/font.ttf`, `resources/font-bold.ttf` — Liberation Sans, SIL Open
-  Font License. See `resources/FONT-LICENSE.txt`.
-- `platforms/android/app/src/main/java/org/libsdl/` — SDL3, zlib license.
-- Dawn, SDL3, nod, RmlUi and the other dependencies are fetched at build time
+- `extern/dht/` — the BitTorrent DHT library, MIT. See its files' headers.
+- `extern/monocypher/` — Monocypher, BSD-2-Clause or CC0. See its files' headers.
+- `platforms/browser/bundle/vendor/sentry.mjs` — the Sentry JavaScript SDK, MIT.
+- SDL3, Dawn (emdawnwebgpu) and the Emscripten SDK are fetched at build time
   under their own licenses.
 
-MIT, zlib and the SIL OFL are all GPL-3.0 compatible, so combining them with
+MIT, zlib and BSD-2-Clause are all GPL-3.0 compatible, so combining them with
 the port code in section 2 is fine.

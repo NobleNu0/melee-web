@@ -251,13 +251,12 @@ Playwright anywhere outside the repository, for example
 
 ```sh
 python3 build/browser/bundle/serve.py &
-MELEE_TEST_BUNDLE=1 MELEE_TEST_URL=http://127.0.0.1:5191/ \
-  PLAYWRIGHT_MODULE=/path/to/node_modules/playwright \
-  node tests/browser/shell-e2e.mjs
+PLAYWRIGHT_MODULE=~/melee-test/node_modules/playwright node tests/browser/shell-e2e.mjs
 ```
 
 Headed Chrome boots each scene and fails any case below 58.5 fps or above a
-33.4 ms p99 frame time.
+33.4 ms p99 frame time. CI (`.github/workflows/ci.yml`) runs what needs no
+SDK or disc: the style and game-syntax checks and the JavaScript unit tests.
 
 After syncing with upstream, also play a Pokémon Stadium match with
 `?MELEE_FROZEN_STADIUM=0` for about three minutes (it transforms about once a
@@ -278,16 +277,18 @@ python3 tools/check_no_game_data.py
 python3 tools/check_no_game_data.py --history origin/master..HEAD   # every blob your commits add
 ```
 
-The tree does carry upstream's screenshots in `docs/screenshots` (captures of
-the game, not data from the disc) and a shader-pipeline seed of GPU render
-state (no textures, models or audio).
+The one binary the tree carries besides fonts and icons is a shader-pipeline
+seed of GPU render state (no textures, models or audio).
 
 ## Relationship to upstream
 
-The engine, game code and native platforms come from
-[999sian/melee-pc](https://github.com/999sian/melee-pc). This fork changes them
-only where the web or the VS profile needs it, and leaves the native platforms
-in place, though only the web app is tested here. For the full game on desktop
+The engine and game code come from
+[999sian/melee-pc](https://github.com/999sian/melee-pc). This fork keeps only
+what the web app builds: the decompiled game, the PC layer it compiles
+(`src/pc`), aurora, and the browser platform. Upstream's native platforms,
+launcher, updater, native tools and tests, release workflow and project site
+are removed. The game modes the VS profile can't reach stay in the code, so
+decomp fixes can still be synced from upstream. For the full game on desktop
 or mobile, use upstream's
 [releases](https://github.com/999sian/melee-pc/releases) and its
 [README](https://github.com/999sian/melee-pc#readme).
@@ -305,8 +306,9 @@ More detail:
   browser in §17.
 - [docs/architecture.md](docs/architecture.md),
   [docs/porting-notes.md](docs/porting-notes.md),
-  [docs/debugging.md](docs/debugging.md): upstream's engine docs, which still
-  apply.
+  [docs/debugging.md](docs/debugging.md): upstream's engine docs. They describe
+  the native builds, but the engine and its environment variables are the
+  same here.
 
 ## License
 
@@ -314,7 +316,7 @@ Three situations, spelled out in [LICENSE.md](licenses/LICENSE.md):
 
 - The decompiled game code in `src/melee` and `src/sysdolphin` is **not
   licensed** and remains the property of its copyright holders.
-- The port code in `src/pc`, `tools`, `platforms`, `cmake` and `.github` is
+- The port code in `src/pc`, `tools`, `platforms` and `.github` is
   **GPL-3.0-or-later** ([COPYING](licenses/COPYING)).
 - Bundled third-party components keep their own licenses.
 

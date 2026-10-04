@@ -9,26 +9,26 @@ set(AURORA_ENABLE_RMLUI OFF CACHE BOOL "" FORCE)
 set(AURORA_CACHE_USE_ZSTD OFF CACHE BOOL "" FORCE)
 set(AURORA_SDL3_PROVIDER vendor CACHE STRING "" FORCE)
 add_compile_definitions(ENABLE_BACKEND_WEBGPU)
-# -fsigned-char: wasm32's default, stated as the top-level CMakeLists.txt does
-# for every native target (it returns before reaching that line for this one).
+# -fsigned-char: wasm32's default, stated because the game assumes it (as the
+# GameCube's compiler and upstream's native builds do).
 add_compile_options(--use-port=emdawnwebgpu -pthread -fsigned-char)
 # Paths baked into the binary (__FILE__ in asserts) relative to the checkout,
 # so a published build does not carry the builder's directory layout.
 add_compile_options(-ffile-prefix-map=${CMAKE_SOURCE_DIR}/=)
 add_link_options(--use-port=emdawnwebgpu -pthread -sALLOW_MEMORY_GROWTH=1 -sASYNCIFY=1)
 add_subdirectory(${CMAKE_SOURCE_DIR}/extern/aurora ${CMAKE_BINARY_DIR}/aurora)
-# Same floating-point contract as the native build (top-level CMakeLists.txt).
+# The same floating-point contract as upstream's native builds, so netplay bits match.
 set(MELEE_FP_FLAGS -ffp-contract=off -fno-fast-math)
 target_compile_options(aurora_mtx PRIVATE ${MELEE_FP_FLAGS}
   -fno-builtin-sinf -fno-builtin-cosf -fno-builtin-tanf -fno-builtin-atanf
   -include ${CMAKE_SOURCE_DIR}/src/pc/libm/pc_trig.h)
 target_compile_options(aurora_gx PRIVATE ${MELEE_FP_FLAGS})
 target_compile_options(aurora_gd PRIVATE ${MELEE_FP_FLAGS})
-# The upstream PC layer, minus what the browser replaces: main.c and
-# disc_open.c (platforms/browser/main.c, dvd.c), the launcher, updater and
-# file cache (pc_stubs.c), and net_match.c's DHT matchmaking (net_match_web.c,
-# over the page's link, net_web.c). Keep in step with PC_SOURCES in
-# the top-level CMakeLists.txt.
+# The PC layer (src/pc). This platform supplies its own main and disc access
+# (main.c, dvd.c), stubs the native launcher and file cache (pc_stubs.c), and
+# replaces net_match.c's DHT matchmaking with rooms on the netplay Worker
+# (net_match_web.c, over the page's link, net_web.c). A new src/pc file the
+# game needs goes in this list.
 set(BROWSER_PC_SOURCES
  audio.c discfont.c gcadapter.c gx.c input_poll.c keyboard.c misc.c os.c profile.c region.c stb_vorbis.c thp.c touch.c vi.c widescreen.c
  android_compat.cpp music_stream.cpp textures.cpp
@@ -37,7 +37,7 @@ set(BROWSER_PC_SOURCES
  libm/pc_atanf.c libm/pc_cosdf.c libm/pc_cosf.c libm/pc_perturb.c libm/pc_rank_exp.c libm/pc_rank_sqrt.c
  libm/pc_rem_pio2_large.c libm/pc_rem_pio2f.c libm/pc_sindf.c libm/pc_sinf.c libm/pc_tandf.c libm/pc_tanf.c)
 list(TRANSFORM BROWSER_PC_SOURCES PREPEND ${CMAKE_SOURCE_DIR}/src/pc/)
-# Vendored netplay dependencies, listed in PC_SOURCES upstream as well.
+# Vendored netplay dependencies.
 list(APPEND BROWSER_PC_SOURCES
  ${CMAKE_SOURCE_DIR}/extern/dht/dht.c ${CMAKE_SOURCE_DIR}/extern/dht/sha1.c
  ${CMAKE_SOURCE_DIR}/extern/monocypher/monocypher.c ${CMAKE_SOURCE_DIR}/extern/monocypher/monocypher-ed25519.c)
@@ -65,10 +65,3 @@ add_custom_command(TARGET melee_browser POST_BUILD
     --enable-reference-types --enable-sign-ext --pass-arg=directize-initial-contents-immutable
     $<TARGET_FILE_DIR:melee_browser>/melee_browser.wasm -o $<TARGET_FILE_DIR:melee_browser>/melee_browser.wasm
   COMMENT "Optimizing melee_browser.wasm at -O3")
-
-# Keep the standalone validation server runnable from a clean build.
-file(GLOB BROWSER_ASSETS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.mjs" "${CMAKE_CURRENT_SOURCE_DIR}/*.js" "${CMAKE_CURRENT_SOURCE_DIR}/*.html")
-foreach(asset IN LISTS BROWSER_ASSETS)
-  get_filename_component(name "${asset}" NAME)
-  configure_file("${asset}" "${CMAKE_CURRENT_BINARY_DIR}/${name}" COPYONLY)
-endforeach()

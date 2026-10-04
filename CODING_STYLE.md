@@ -265,19 +265,19 @@ pc_log_line("[Audio] Initialized SDL3 audio stream: %d Hz, %d channels", freq, c
 Before submitting changes, run the local verification suite:
 
 ```bash
-# 1. Check style and formatting
+# 1. Check style and formatting (needs clang-format on PATH)
 python3 tools/check_style.py
 
-# 2. Syntax-check all game translation units
+# 2. Syntax-check all game translation units (needs gcc)
 python3 tools/compile_check.py
 
-# 3. Check struct size and offset ABI matches against GameCube
-python3 tools/lint_sweep.py build
+# 3. Keep game data out of the repository
+python3 tools/check_no_game_data.py
 
-# 4. Build and run unit test targets
-ninja -C build launcher_data_test version_test
-./build/launcher_data_test
-./build/version_test
+# 4. Build the engine (oracle tests, game, link, JavaScript unit tests), then
+#    the bundle, and run the 60 fps browser test (README.md, Testing)
+python3 tools/browser/build.py --jobs 8
 ```
 
-Continuous Integration automatically validates these checks on every Pull Request and tag commit across Linux, Windows (MinGW cross-compilation), and Android.
+CI (`.github/workflows/ci.yml`, `no-game-data.yml`) runs steps 1-3 and the
+JavaScript unit tests on every push and pull request.

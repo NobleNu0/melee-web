@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Host page for the bundled web app: the disc is melee.pak next to this file
-// (tools/browser/bundle.py), so there is no picker. Same Module interface as
-// ../shell.mjs; see platforms/browser/README.md.
+// (tools/browser/bundle.py). The Module interface it fills is described in
+// platforms/browser/README.md (Host page interface).
 import { openPak } from './pak-reader.mjs';
 import { checkGraphics } from './gpu-preflight.mjs';
 import { startControllerView } from './controller-view.mjs';
@@ -81,8 +81,8 @@ function onFrame() {
   }
 }
 
-// Any MELEE_* query parameter becomes an environment variable, as in shell.mjs,
-// except the profile: melee.pak holds only what the VS-only profile reads.
+// Any MELEE_* query parameter becomes an environment variable, except the
+// profile: melee.pak holds only what the VS-only profile reads.
 const ENV = {};
 for (const [key, value] of params) {
   if (/^MELEE_[A-Z0-9_]+$/.test(key)) ENV[key] = value;

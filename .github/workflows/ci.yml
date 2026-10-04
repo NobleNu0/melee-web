@@ -1,0 +1,41 @@
+name: CI
+
+# What runs without the Emscripten SDK or a disc: style and game-syntax
+# checks, and the web app's JavaScript unit tests. The engine build and the
+# 60 fps browser test need LLVM, GCC and the player's own disc, so they run
+# locally (README.md, Setup and Testing).
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Style and game syntax
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-format python3
+      - run: python3 tools/check_style.py
+      - run: python3 tools/compile_check.py
+
+  web-unit:
+    name: Web app unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test platforms/browser/tests/*.test.mjs

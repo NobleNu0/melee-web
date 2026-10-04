@@ -1,19 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /**
- * Real-disc validation of the browser build through its shell page.
- *
- *   python3 tools/browser/serve.py --port 5190 &
- *   MELEE_ISO=/path/to/GALE01.iso PLAYWRIGHT_MODULE=/path/to/playwright \
- *     node tests/browser/shell-e2e.mjs [case ...]
- *
- * The bundled app (tools/browser/bundle.py) has its disc built in instead:
+ * Validation of the bundled web app (tools/browser/bundle.py) on the player's
+ * own disc:
  *
  *   python3 build/browser/bundle/serve.py &
- *   MELEE_TEST_BUNDLE=1 MELEE_TEST_URL=http://127.0.0.1:5191/ \
- *     PLAYWRIGHT_MODULE=/path/to/playwright node tests/browser/shell-e2e.mjs
+ *   PLAYWRIGHT_MODULE=/path/to/playwright node tests/browser/shell-e2e.mjs [case ...]
  *
- * Scenes are reached with MELEE_BOOT_SCENE (docs/testing.md), not synthetic
- * menu navigation. Each case must hold 60 fps: that, not "it rendered", is the
+ * MELEE_TEST_URL overrides the page (default http://127.0.0.1:5191/). Scenes
+ * are reached with MELEE_BOOT_SCENE (src/melee/gm/gm_1A3F.c), not synthetic menu
+ * navigation. Each case must hold 60 fps: that, not "it rendered", is the
  * bar for this platform. Headed Chrome, because headless has no WebGPU adapter
  * on most machines.
  */
@@ -22,10 +17,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const iso = process.env.MELEE_ISO;
-const bundle = Boolean(process.env.MELEE_TEST_BUNDLE);
-if (!iso && !bundle) throw Error('Set MELEE_ISO to your own GALE01 disc image.');
-const base = process.env.MELEE_TEST_URL || 'http://127.0.0.1:5190/';
+const base = process.env.MELEE_TEST_URL || 'http://127.0.0.1:5191/';
 const output = path.resolve(process.env.TEST_OUTPUT || 'build/browser/shell-e2e');
 const measureMs = Number(process.env.MELEE_MEASURE_MS || 20000);
 await mkdir(output, { recursive: true });
@@ -33,15 +25,12 @@ await mkdir(output, { recursive: true });
 const cases = [
   { name: 'title', env: {}, keys: ['x', 'x', 'x', 'Enter', 'Enter'] },
   { name: 'vs', env: { MELEE_BOOT_SCENE: 'vs' } },
-  { name: 'classic', env: { MELEE_BOOT_SCENE: 'classic' } },
   { name: 'training', env: { MELEE_BOOT_SCENE: 'training' } },
   // Four CPUs on Final Destination: the heaviest scene, and it stays busy unattended.
   { name: 'vs-cpu4', env: { MELEE_BOOT_SCENE: 'vs', MELEE_DEBUG_VS: 'cpu4' } },
-  // The bundle's VS-only profile: Start at the title opens VS character select.
-  { name: 'css', env: {}, keys: ['Enter'], bundleOnly: true },
-].filter((c) => process.argv.length < 3 || process.argv.slice(2).includes(c.name))
-  // The bundle has no Classic (VS-only profile); the css case runs only there.
-  .filter((c) => (bundle ? c.name !== 'classic' : !c.bundleOnly));
+  // The VS-only profile: Start at the title opens VS character select.
+  { name: 'css', env: {}, keys: ['Enter'] },
+].filter((c) => process.argv.length < 3 || process.argv.slice(2).includes(c.name));
 
 const browser = await chromium.launch({ channel: 'chrome', headless: false });
 const results = [];
@@ -63,7 +52,6 @@ try {
       const url = new URL(base);
       for (const [k, v] of Object.entries({ MELEE_SEED: '1', MELEE_SCENE_LOG: '1', ...test.env })) url.searchParams.set(k, v);
       await page.goto(url.href);
-      if (!bundle) await page.locator('#disc').setInputFiles(iso);
       await page.waitForFunction(() => !document.querySelector('#start').disabled, null, { timeout: 60000 });
       const started = Date.now();
       await page.locator('#start').click();

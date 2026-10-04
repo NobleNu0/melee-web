@@ -1,48 +1,41 @@
 # Browser platform (Emscripten + WebGPU)
 
-Runs the game in a web page from the player's own disc image. The page reads the
-image with the File API; nothing is uploaded and no game data is part of the
-build. Game logic, Aurora GX, the AX mixer and memory-card support are the same
-code as every other platform.
+The web app: the engine compiled to WebAssembly, rendering through WebGPU, with
+the game data packed from the player's own disc into `melee.pak`. Game logic,
+Aurora GX, the AX mixer and the rollback netcode are the same code as upstream's
+native builds; this folder holds the platform layer, the page and the netplay
+Worker.
 
 Status: desktop Chrome (tested on Apple Silicon; Chromium on Linux with Intel
-Arc graphics as well) holds 60 fps in every scene the tests reach,
-including four CPUs on Final Destination. It needs WebGPU; there is no WebGL
-fallback. Netplay is compiled in but refused at connect (browsers have no UDP),
-and HD texture packs, custom music, the desktop launcher and the updater are
-absent.
+Arc graphics as well) holds 60 fps in every scene the tests reach, including
+four CPUs on Final Destination. It needs WebGPU; there is no WebGL fallback.
+Online play works through the netplay Worker (below). HD texture packs, custom
+music, the desktop launcher and the updater are absent.
 
 ## Build and run
 
-Prerequisites: Python 3, CMake, Ninja, Git, LLVM 22 with LibTooling
-(`LLVM_ROOT`, default `/opt/homebrew/opt/llvm@22`), and a real GCC 12+ on `PATH`
-as `gcc-NN` for the lowering oracle.
-
-```sh
-python3 tools/browser/setup_sdk.py        # pinned Emscripten into build/browser/emsdk
-python3 tools/browser/build.py --jobs 8   # oracle tests, game, Aurora, link, node tests
-python3 tools/browser/serve.py            # http://127.0.0.1:5190/
-```
-
-`serve.py` exists because the engine uses threads, which browsers only allow on
-a cross-origin-isolated page (COOP/COEP headers). A host that cannot send them,
-such as GitHub Pages, gets them from `coi-sw.js`, a service worker the page
-registers and reloads under once. (Upstream publishes this build to GitHub
-Pages; this fork has no Pages site.)
-
-Any `MELEE_*` query parameter becomes an environment variable, so the knobs in
-`docs/testing.md` work as they do natively:
-`http://127.0.0.1:5190/?MELEE_BOOT_SCENE=vs&MELEE_DEBUG_VS=cpu4`.
-
-## Bundled web app (disc built in)
-
-`tools/browser/bundle.py` turns the engine and your own disc image into one
-self-contained folder that boots straight into the game, with no disc picker:
+Prerequisites and install commands are in the top-level README (Setup). Then:
 
 ```sh
 python3 tools/browser/bundle.py /path/to/GALE01.iso      # -> build/browser/bundle
 python3 build/browser/bundle/serve.py                    # http://127.0.0.1:5191/
 ```
+
+`bundle.py` runs `setup_sdk.py` (the pinned Emscripten SDK, into
+`build/browser/emsdk`) and `build.py` (the lowering oracle tests, the game,
+Aurora, the link and the node tests) when their output is missing, then packs
+the disc and assembles the folder.
+
+`serve.py` exists because the engine uses threads, which browsers only allow on
+a cross-origin-isolated page (COOP/COEP headers). A host that cannot send them,
+such as GitHub Pages, gets them from `coi-sw.js`, a service worker the page
+registers and reloads under once.
+
+Any `MELEE_*` query parameter becomes an environment variable, so upstream's
+knobs work as they do natively:
+`http://127.0.0.1:5191/?MELEE_BOOT_SCENE=vs&MELEE_DEBUG_VS=cpu4`.
+
+## The bundle
 
 The image may be a plain `.iso`/`.gcm` or a `.ciso` (read in place, scrubbed
 blocks as zeros); RVZ, WIA, GCZ and WBFS are refused with how to convert them.
@@ -58,7 +51,7 @@ static upload limit, and a host that ignores Range requests gets the pak
 downloaded once, whole, instead of streamed.
 
 The folder is portable: copy it to any static host that supports HTTP Range
-requests (GitHub Pages, nginx, and so on; `coi-sw.js` supplies COOP/COEP where the
+requests (nginx, GitHub Pages and so on; `coi-sw.js` supplies COOP/COEP where the
 host cannot), or run its own standard-library `serve.py` wherever Python 3 is.
 It holds game data from your disc, so it is for your own use: do not publish it.
 
@@ -120,11 +113,8 @@ It holds game data from your disc, so it is for your own use: do not publish it.
 - The engine's wasm is stripped of its function names and shipped gzipped
   (`melee_browser.wasm.gz`, 4.9 MiB); `app.mjs` inflates it with
   `DecompressionStream` in `Module.instantiateWasm`, and passes bytes through
-  untouched when a host already served them with `Content-Encoding: gzip`. The page takes the same
-  `MELEE_*` query parameters as the disc-picker shell, plus `?res=WxH`.
-
-`MELEE_TEST_BUNDLE=1 MELEE_TEST_URL=http://127.0.0.1:5191/ node tests/browser/shell-e2e.mjs`
-runs the 60 fps cases against the bundle instead of a picked disc.
+  untouched when a host already served them with `Content-Encoding: gzip`.
+  The page takes `MELEE_*` query parameters (above), plus `?res=WxH`.
 
 ## Online play (netplay)
 
@@ -242,14 +232,14 @@ accident (`ftLib_800876B4`, `gm_801677E8`, `mnCharSel_802640A0`).
 
 ## What differs from native
 
-- `main.c`, `dvd.c` replace `src/pc/main.c` and nod: the part of the DVD API
-  this target links (an unimplemented call is a link error) is served from
-  the page's `File` through `disc-cache.mjs` (512 KiB blocks, 32 MiB LRU). A
-  cache miss suspends the wasm (Asyncify) until the read resolves. Only plain
-  GALE01 revision 2 `.iso`/`.gcm` images are accepted for now.
-- `pc_stubs.c` replaces the desktop launcher's settings, the libusb GameCube
-  adapter and the archive file cache. Everything else in `src/pc` is compiled
-  unchanged; when `PC_SOURCES` grows, add the file to `BROWSER_PC_SOURCES`.
+- `main.c` and `dvd.c` replace upstream's native main and nod: the part of
+  the DVD API this target links (an unimplemented call is a link error) is
+  served by the page's `Module.readDisc`, which reads `melee.pak`
+  (`bundle/pak-reader.mjs`). A cache miss suspends the wasm (Asyncify) until
+  the read resolves.
+- `pc_stubs.c` replaces the desktop launcher's settings and the archive file
+  cache. Everything else in `src/pc` is compiled; a new file there goes in
+  `BROWSER_PC_SOURCES` (`CMakeLists.txt`).
 - One thread runs the game and submits GPU work (`ProcessingMode::Inline`);
   the browser only exposes a WebGPU device to the realm that created it. DVD,
   ARQ and card completions that native delivers from worker threads are
@@ -270,27 +260,27 @@ accident (`ftLib_800876B4`, `gm_801677E8`, `mnCharSel_802640A0`).
 
 ## Host page interface
 
-`index.html` and `shell.mjs` are a complete host in about a hundred lines. A page
-embedding the engine sets these on `Module` before loading `melee_browser.js`:
-`canvas` (its `width` and `height` are the render size), `print`/`printErr`,
-`readDisc(offset, size)` returning a `Uint8Array` or a promise of one, and
-optionally `onFrame(frame)`, `onGraphicsPreparation(done, total)` and `onAbort`.
-Environment variables go into `Module.ENV` from `preRun`, which is after
-Emscripten creates `ENV` and before the static constructor that snapshots it.
-Then the page mounts `/saves` and `/cache` and calls `callMain([])`.
+`bundle/index.html` and `bundle/app.mjs` are the host. It sets these on
+`Module` before loading `melee_browser.js`: `canvas` (its `width` and
+`height` are the render size), `print`/`printErr`, `readDisc(offset, size)`
+returning a `Uint8Array` or a promise of one, and optionally `onFrame(frame)`,
+`onGraphicsPreparation(done, total)` and `onAbort`. Environment variables go
+into `Module.ENV` from `preRun`, which is after Emscripten creates `ENV` and
+before the static constructor that snapshots it. Then the page mounts `/saves`
+and `/cache` and calls `callMain([])`.
 
 ## Testing
 
 ```sh
-python3 tools/browser/serve.py &
-MELEE_ISO=/path/to/GALE01.iso PLAYWRIGHT_MODULE=/path/to/node_modules/playwright \
-  node tests/browser/shell-e2e.mjs
+python3 build/browser/bundle/serve.py &
+PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node tests/browser/shell-e2e.mjs
 ```
 
-Headed Chrome boots `title` (answering the memory-card prompt and menus by
-keyboard), `vs`, `vs-cpu4`, `classic` and `training`, and fails any case below
-58.5 fps or above a 33.4 ms p99 frame time. Boot-scene cases must also log the
-scene they asked for, so holding 60 fps on the wrong screen cannot pass.
+Headed Chrome boots `title`, `vs`, `vs-cpu4`, `training` and `css` (Start at
+the title opening VS character select), and fails any case below 58.5 fps or
+above a 33.4 ms p99 frame time. Boot-scene cases must also log the scene they
+asked for, so holding 60 fps on the wrong screen cannot pass. `build.py` runs
+the JavaScript unit tests (`platforms/browser/tests`), which CI also runs.
 
 Audio does not go through SDL here: `src/pc/audio.c` writes the mix into a
 ring in shared wasm memory and an `AudioWorklet` plays it on the browser's

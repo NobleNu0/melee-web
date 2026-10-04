@@ -8,7 +8,7 @@
  * second visit reads from disk and a rebuilt pak never mixes with an old one;
  * inflated blocks are kept in a bounded in-memory LRU.
  *
- * read(offset, size) has disc-cache.mjs's contract: a Uint8Array when every
+ * read(offset, size) is Module.readDisc's contract: a Uint8Array when every
  * block is resident in memory, so a hit never suspends the wasm, and a Promise
  * of one otherwise. A miss stalls the game for a round trip, so the two ways
  * data arrives ahead of need both stay off the game's thread: prefetch() fills
