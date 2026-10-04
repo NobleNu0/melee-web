@@ -8,7 +8,7 @@ netplay over WebRTC.**
 Open a page, pick your character, and play: against a CPU, or online against a
 friend with an invite link. Nothing to install. Bring your own copy of the game.
 
-## Fork of melee-pc
+## Built on melee-pc
 
 melee-web is built on [melee-pc](https://github.com/999sian/melee-pc), the PC
 port of Melee, and it's the project we contribute back to: fixes that help
@@ -138,9 +138,9 @@ pushing, run `python3 tools/check_no_game_data.py`; CI runs it too.
 
 ## Credits and license
 
-Built on [melee-pc](https://github.com/999sian/melee-pc), which comes from the
+Thanks to [melee-pc](https://github.com/999sian/melee-pc), the
 [doldecomp/melee](https://github.com/doldecomp/melee) decompilation and
-[aurora](https://github.com/encounter/aurora).
+[aurora](https://github.com/encounter/aurora), which this project is made from.
 
 No game data is in this repository. The decompiled game code in `src/melee`
 and `src/sysdolphin` is not licensed and belongs to its copyright holders; the
