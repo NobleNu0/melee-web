@@ -145,7 +145,7 @@ GCC must be on `PATH` under a versioned name, `gcc-12` through `gcc-16`. Plain
 
 ```sh
 git clone https://github.com/NobleNu0/melee-web.git
-cd melee-pc
+cd melee-web
 python3 tools/browser/bundle.py /path/to/your/melee.iso
 ```
 
