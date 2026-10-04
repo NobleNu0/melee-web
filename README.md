@@ -89,6 +89,14 @@ python3 tools/browser/bundle.py /path/to/your/melee.iso --signal-url wss://melee
 Choose **Host online match** and send your friend the invite link, or have them
 press **Join** and type your code.
 
+**Bring your own signaling.** The server's main job is introducing the two
+browsers; once they're connected, the match runs peer to peer. That part is
+open ended. Any server that speaks the same small room protocol works with
+`--signal-url`, and the handshake in
+[`platforms/browser/bundle/netplay.mjs`](platforms/browser/bundle/netplay.mjs)
+can be swapped for another way of exchanging it, such as BitTorrent trackers,
+ATProto, or your own signaling server.
+
 More options (relays, local testing) are in
 [platforms/browser/README.md](platforms/browser/README.md#online-play-netplay).
 
