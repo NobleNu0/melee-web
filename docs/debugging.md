@@ -1,61 +1,56 @@
 # Debugging
 
-## Log files
+## Logs
 
-Everything goes through `pc_log_line()` (`src/pc/pc.h`), timestamped in
-milliseconds from startup. The log goes to `stderr` and, when `MELEE_LOG_FILE`
-names a path, to that file too; output is flushed per line and both streams are
-flushed before a fatal `abort()`, so the file survives a crash. An empty value
-disables the file sink. On Windows it defaults to `melee-pc.log` beside
-`melee.exe`, because a double-clicked console app's window vanishes on exit.
-`MELEE_DEBUG=1` raises aurora's log level to debug. Any frame over 50 ms leaves
-a marker in the log (`src/pc/vi.c`). Backend selection logs one line per
-skipped backend with Dawn's reason (`No usable D3D12 adapter (...); trying the
-next backend`) and then a summary such as
-`graphics backend: d3d11 (auto), adapter: Intel(R) HD Graphics 4400 [8086:0a16], driver: ...`;
-that line is the first thing to read in a GPU report. Android logs to logcat
-under the tag `Aurora`; iOS uses `os_log`.
+Everything the engine prints goes through `pc_log_line()` (`src/pc/pc.h`),
+timestamped in milliseconds from startup, and arrives in the browser's console
+(the page's `Module.print`, `platforms/browser/bundle/app.mjs`). Any frame
+over 50 ms leaves a `STALL` marker (`src/pc/vi.c`). aurora's `[aurora::gpu]`
+lines (enabled features, surface format) are the first things to read in a
+graphics report.
 
-The Windows zip ships `RUN-AND-LOG.bat`: it sets `MELEE_DEBUG`, `MELEE_LOG_FILE`
-and `MELEE_FPS`, records the OS version and GPU driver into `melee-pc-env.log`,
-boots a `melee.ciso` sitting beside the exe if there is one, and keeps the
-window open. Ask for both `.log` files when triaging a Windows report.
+Settings are query parameters: any `MELEE_*` parameter on the page's URL
+becomes an environment variable before the engine starts, so
+`?MELEE_FPS=1&MELEE_BOOT_SCENE=vs` is how the variables below are set.
+`MELEE_BOOT_SCENE=title|vs|classic|credits` boots straight into a scene;
+`MELEE_DEBUG_VS_CHARS=<ckind>,...` and `MELEE_DEBUG_VS_STAGE=<stkind>` choose
+the debug VS match's fighters and stage, which is how to reach any character
+or stage without menus. `MELEE_DVD_TRACE=1` names each file as it is first
+opened.
 
-## Crash handler (Windows)
+## Crashes
 
-A hard access violation never reaches the logger, so on Windows
-`SetUnhandledExceptionFilter` (`src/pc/main.c`) writes the exception code, the
-faulting address and a backtrace as `module+RVA` per frame to `stderr` and the
-log file. The module name separates a fault inside `webgpu_dawn.dll` from one in
-`melee.exe`; the RVA feeds `addr2line` against the matching build.
+An assert prints `PANIC <file>:<line>` and aborts; the page shows the message
+and, when the build has a Sentry DSN (`bundle.py --sentry-dsn`), reports it
+with the wasm stack, the recent log, and the browser, OS and GPU
+(`bundle/telemetry.mjs`). The deployed wasm keeps its function names, so the
+stack reads as game functions. A file the pak lacks is logged as
+`[dvd] <name> is not in this bundle` (`platforms/browser/dvd.c`) and reported
+too. A desync in online play is logged as `net: DESYNC at frame N`, followed
+by the recent frames' checksummed state (`src/pc/net.c`); the page shows it on
+the online chip.
 
-## gdb
-
-`tools/run.sh <disc>` runs the game under gdb and prints every thread's
-backtrace on a crash or SIGINT; `tools/run_dbg.sh` adds a FIFO/PAD state dump.
-A backtrace is ground truth; a screenshot under Xwayland may be stale (see
-[testing.md](testing.md)). For fields of a `DISC_STRUCT`, print a local the
-program computed rather than trusting gdb's view of `DW_AT_endianity`.
+For a hang, pause in the browser's debugger: the wasm frames name the loop.
+`tests/browser/shell-e2e.mjs` holds each scene to 60 fps; run it after any
+change to shared code ([platforms/browser/README.md](../platforms/browser/README.md#testing)).
 
 ## Heap check
 
 `MELEE_HEAP_CHECK=1` appends a canary to every `OSAlloc` allocation
 (`extern/aurora/lib/dolphin/os/OSAlloc.cpp`), checks them each frame, and aborts
-at the first stomp with the allocating call site (resolve with
-`addr2line -f -C -e build/melee <addr>`). This is the tool for "walked an object
+at the first stomp with the allocating call site. This is the tool for "walked an object
 by GameCube word number" and other off-by-pointer-width writes.
 
 ## Diagnostic environment variables
 
 These are off by default and cost nothing when unset. They measure or suppress
-only; none of them fixes anything. User-facing knobs (`MELEE_BACKEND`,
-`MELEE_VSYNC`, ...) are in the [README](../README.md#environment-variables).
+only; none of them fixes anything. The netplay knobs (`MELEE_NET_*`) are in
+[netcode-plan.md](netcode-plan.md) and `src/pc/net.c`.
 
 | Variable | Effect |
 |---|---|
-| `MELEE_DEBUG=1` | Debug-level aurora logging. |
-| `MELEE_LOG_FILE=<path>` | Log file sink (default `melee-pc.log` on Windows; empty disables). |
 | `MELEE_FPS=1` | Print frame rate once a second. |
+| `MELEE_INPUT_HUD=1` | Log how old the controller sample each tick consumes is. |
 | `MELEE_HEAP_CHECK=1` | Canaries on every heap allocation, checked each frame; aborts at the first stomp. |
 | `MELEE_SEED=<n>` | Deterministic RNG for the attract demo. |
 | `MELEE_AUDIO_DUMP=<file>` | Also write the mix as raw f32 stereo 32 kHz. |
@@ -82,7 +77,6 @@ only; none of them fixes anything. User-facing knobs (`MELEE_BACKEND`,
 | `AURORA_SKIP_UNTEX_VTX=n`, `AURORA_ONLY_UNTEX_VTX=n` | Drop, or keep only, untextured draws with exactly n vertices. |
 | `AURORA_LOG_TEV=1`, `AURORA_LOG_UNTEX_REGS=1`, `AURORA_LOG_QUADPOS=1` | Report what an untextured draw's TEV stages / registers / quad positions asked for. |
 | `AURORA_LEGACY_TEX_LOD=1` | Restore the unconditional LOD-bias sample (positive control for the black-floor sweep). |
-| `AURORA_NO_PIN=1`, `AURORA_PIN_THREADS=0` | Disable pinning aurora's worker threads to cores. |
 
-`grep -rho 'getenv("\(MELEE\|AURORA\)_[A-Z0-9_]*")' src extern/aurora/lib` is the
+`grep -rho 'getenv("\(MELEE\|AURORA\)_[A-Z0-9_]*")' src extern/aurora/lib platforms` is the
 authoritative list; the table lags it.

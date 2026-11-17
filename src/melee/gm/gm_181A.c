@@ -1,3 +1,5 @@
+#include "gm_181A.h"
+
 #include <Runtime/platform.h>
 
 #include <sysdolphin/baselib/forward.h>
@@ -24,16 +26,6 @@
 #include <sysdolphin/baselib/mobj.h>
 #include <sysdolphin/baselib/random.h>
 #include <sysdolphin/baselib/tobj.h>
-
-typedef struct RegClearSpawnEntry {
-    /* 0x00 */ s32 x0;
-    /* 0x04 */ u8 x4;
-    /* 0x05 */ u8 x5;
-    /* 0x06 */ u8 x6;
-    /* 0x07 */ u8 x7;
-    /* 0x08 */ f32 x8;
-    /* 0x0C */ f32 xC;
-} RegClearSpawnEntry;
 
 /// Same row layout as #RegClearSpawnEntry, as it lies in GmKumite.dat.
 typedef struct DISC_STRUCT RegClearSpawnEntryDisc {
@@ -578,8 +570,15 @@ bool gm_IsMultimanSmashMode(void)
     return false;
 }
 
+/// Original addresses these fields relative to #lbl_80472ED8 (reference
+/// relocations are lbl_80472ED8+0x6BC..+0x6C8), which on GameCube is
+/// lbl_80473594.
 void gm_80182554(int arg0, int arg1)
 {
+    /* PORT: 64-bit host fix: lbl_80472ED8 is 0x6D8 bytes on 64-bit, so the
+     * GameCube +0x6BC overlay wrote over its x6AC/x6B0/x6B4 spawn-table
+     * pointers and lbl_80473594 was never initialised (Multi-Man records
+     * did not save). Write lbl_80473594 directly. */
     RegClearRecordState* s = &lbl_80473594;
 
     s->xC = arg0;

@@ -410,6 +410,7 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
     const auto prevSampledTextures = cache.shaderInfo.sampledTextures;
     const auto prevSampledIndTextures = cache.shaderInfo.sampledIndTextures;
     populate_pipeline_config(cache.config, prim, fmt);
+    gfx::select_hybrid_pipeline(cache.config, gfx::get_render_target_layout());
     cache.shaderInfo = build_shader_info(cache.config.shaderConfig);
     cache.pipelineRef = gfx::pipeline_ref(cache.config);
     cache.targetLayoutKey = targetLayoutKey;
@@ -547,6 +548,7 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
   cache.lastDrawFmt = fmt;
   gfx::push_draw_command(DrawData{
       .pipeline = cache.pipelineRef,
+      .bindGroups = cache.bindGroups,
       .vertRange = vertRange,
       .idxRange = idxRange,
       .uniformRange = cache.uniformRange,
@@ -557,9 +559,9 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
       .vtxCount = vtxCount,
       .indexCount = numIndices,
       .instanceCount = instanceCount,
-      .bindGroups = cache.bindGroups,
       .dstAlpha = state.dstAlpha,
       .tag = sMarkerTag,
+      .uberTev = cache.config.shaderConfig.uberTev != 0,
   });
 }
 
@@ -892,6 +894,7 @@ void handle_aurora(ByteReader& reader) noexcept {
 }
 
 void clear_draw_cache() noexcept {
+  if (sDrawCache.config.shaderConfig.uberTev) sDrawCache.hasPipeline = false;
   sDrawCache.bindGeneration = 0;
   sDrawCache.uniformRange = {};
   sDrawCache.fogRange = {};

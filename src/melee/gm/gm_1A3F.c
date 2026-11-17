@@ -176,6 +176,7 @@ void gm_801A4014(GameMode* mode)
     sm->routing.curr_state_id = state->id;
 
 #ifdef TARGET_PC
+    pc_gfx_scene(0);
     /* The state id is what separates "the mode loaded" from "the match is
      * running": GM_CLASSIC state 0 is only its intro, state 1 is the fight.
      * A scripted run has no screen to read, so this line is the evidence. */

@@ -239,7 +239,8 @@ accident (`ftLib_800876B4`, `gm_801677E8`, `mnCharSel_802640A0`).
   the read resolves.
 - `pc_stubs.c` replaces the desktop launcher's settings and the archive file
   cache. Everything else in `src/pc` is compiled; a new file there goes in
-  `BROWSER_PC_SOURCES` (`CMakeLists.txt`).
+  `BROWSER_PC_SOURCES` (`CMakeLists.txt`), or, if it reads disc structs, in
+  `compile_game.py`'s list (as `vtxarray.c` and `widescreen.c` are).
 - One thread runs the game and submits GPU work (`ProcessingMode::Inline`);
   the browser only exposes a WebGPU device to the realm that created it. DVD,
   ARQ and card completions that native delivers from worker threads are
@@ -256,7 +257,8 @@ accident (`ftLib_800876B4`, `gm_801677E8`, `mnCharSel_802640A0`).
   loading status before `melee_main` rather than five per frame during play.
   The cache uses `journal_mode=MEMORY`: WAL on Emscripten's in-memory filesystem
   stalled uploads for over a second at a time and never persisted.
-- Saves (`/saves`) and the pipeline cache (`/cache`) persist in IndexedDB.
+- Only the pipeline cache (`/cache`) persists, in IndexedDB. The memory card
+  (`/saves`) lives in memory: the web app is stateless.
 
 ## Host page interface
 

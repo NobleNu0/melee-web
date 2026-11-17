@@ -44,7 +44,10 @@ COMPILE_FLAGS = [
 
 def game_sources():
     sources = sorted([*(ROOT / 'src/melee').rglob('*.c'), *(ROOT / 'src/sysdolphin').rglob('*.c')])
-    sources.append(ROOT / 'src/pc/vtxarray.c')
+    # Port files that read disc structs and so need the same lowering as the
+    # game (Clang ignores scalar_storage_order): vtxarray.c, and widescreen.c,
+    # whose magnifier copy reads HSD_ImageDesc.width.
+    sources += [ROOT / 'src/pc/vtxarray.c', ROOT / 'src/pc/widescreen.c']
     # Same exclusion as cmake/GameSources.cmake: PowerPC debugger integration.
     return [s for s in sources if s.name != 'debugconsole_main.c']
 

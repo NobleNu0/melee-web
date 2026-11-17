@@ -48,31 +48,7 @@ static const char* grStadium_pc_pending;
 #endif
 #include "pc/pc.h"
 
-static struct DISC_STRUCT grPStadium_YakumonoParam {
-    int x0;
-    int x4;
-    int x8;
-    int xC;
-    int x10;
-    int x14;
-    int x18;
-    u8 r, g, b;
-    u32 x20;
-    u32 x24;
-    u32 x28;
-    u32 x2C;
-    u32 x30;
-    u32 x34;
-    u32 x38;
-    u32 x3C;
-    u32 x40;
-    u32 x44;
-    s16 x48;
-    s16 x4A;
-    s16 x4C;
-    s16 x4E;
-    s16 x50;
-}* yakumono_param;
+static struct grPStadium_YakumonoParam* yakumono_param;
 
 GrJoint grPs_803E1248[] = {
     { 1, 3, 0 }, { 2, 3, 0 }, { 3, 4, 0 },
@@ -269,8 +245,8 @@ void grStadium_801D1290(Ground_GObj* gobj)
 
     grAnime_801C8138(gobj, gp->map_id, 0);
     grAnime_801C77FC(gobj, 0, 7);
-    gp->u.display.xD0 = HSD_ArchiveGetPublicAddress(
-        grDatFiles_801C6330(1)->unk0,
+    gp->u.display.xD0 = HSD_ArchiveGetPublicAs(
+        HSD_ImageDesc, grDatFiles_801C6330(1)->unk0,
         "GrdPStadiumBG_OVDummy_mat6962_GrdPStadiumDummy_0_image_desc");
     if (gp->u.display.xD0 == NULL) {
         OSReport("no such image desc!\n");
@@ -1210,7 +1186,7 @@ HSD_GObj* grStadium_801D2BEC(void)
     archive = grDatFiles_GetArchive();
     HSD_SisLib_803A611C(1, gobj, 9, 0xD, 0, 1, 0, 1);
     HSD_SisLib_804D1124[1] =
-        HSD_ArchiveGetPublicAddress(archive->unk0, "SIS_GrPStadiumData");
+        HSD_ArchiveGetPublicAs(SIS, archive->unk0, "SIS_GrPStadiumData");
     text->win_static_p =
         HSD_SisLib_803A5ACC(1, 0, 0.0F, 0.0F, 0.0F, 250.0F, 160.0F);
     text->win_dynamic_p = HSD_SisLib_803A6754(1, 0);
@@ -1723,16 +1699,18 @@ static inline u8 grStadium_ScaleColor(u8 value)
     return scaled;
 }
 
+union grStadium_801D3BBC_colors {
+    StadiumColor entries[5];
+    struct grStadium_801D3BBC_colors_s {
+        StadiumColor head;
+        StadiumAlphaPresets presets;
+    } s;
+};
+
 void grStadium_801D3BBC(Ground_GObj* arg0)
 {
     UNUSED u64 pad;
-    union {
-        StadiumColor entries[5];
-        struct {
-            StadiumColor head;
-            StadiumAlphaPresets presets;
-        } s;
-    } colors;
+    union grStadium_801D3BBC_colors colors;
     HSD_Text* dynamic_text;
     HSD_GObj* player_gobj;
     HSD_GObj* current_player_gobj;
@@ -1928,38 +1906,37 @@ bool grStadium_801D42B8(void)
 {
     HSD_GObj* map_gobj;
     Ground* gp;
+    bool result;
 
     map_gobj = Ground_GetMapGObj(2);
     HSD_ASSERT(0x978, map_gobj);
     gp = grStadium_801D4354(map_gobj);
     HSD_ASSERT(0x979, gp);
     if (gp->u.stadium.xC4_b1) {
-        return false;
-    }
+        result = false;
+    } else {
 #ifdef TARGET_PC
-    /* The parse relocates the archive in place, and the buffer may be
-     * preload-cache memory no rollback snapshot covers. A rollback to the
-     * frame between the load and this parse would then hand the re-run an
-     * already relocated buffer. Copying the pristine file over it first
-     * makes the parse the same whichever timeline reaches it. */
-    if (grStadium_pc_pending != NULL &&
-        pc_net_pure_load(lbFileGetFullName(grStadium_pc_pending)))
-    {
-        size_t size;
-        if (pc_file_cache_get(lbFileGetFullName(grStadium_pc_pending),
-                              gp->u.stadium.xCC, &size))
+        /* PORT: The parse relocates the archive in place, and the buffer may
+         * be preload-cache memory no rollback snapshot covers. A rollback to
+         * the frame between the load and this parse would then hand the re-run
+         * an already relocated buffer. Copying the pristine file over it first
+         * makes the parse the same whichever timeline reaches it. */
+        if (grStadium_pc_pending != NULL &&
+            pc_net_pure_load(lbFileGetFullName(grStadium_pc_pending)))
         {
-            gp->u.stadium.xC8 = size;
+            size_t size;
+            if (pc_file_cache_get(lbFileGetFullName(grStadium_pc_pending),
+                                  gp->u.stadium.xCC, &size))
+            {
+                gp->u.stadium.xC8 = size;
+            }
         }
-    }
 #endif
-    /* One parse, once the load is in: it relocates the archive in place, so
-     * a second pass over the same buffer walks extern chains the first one
-     * already cleared and never ends (d8f2384 had merged in upstream's
-     * if/else parse ahead of this one, and always returned true). */
-    gp->u.stadium.xD0 =
-        grDatFiles_801C6478(gp->u.stadium.xCC, gp->u.stadium.xC8);
-    return true;
+        gp->u.stadium.xD0 =
+            grDatFiles_801C6478(gp->u.stadium.xCC, gp->u.stadium.xC8);
+        result = true;
+    }
+    return result;
 }
 
 Ground* grStadium_801D4354(Ground_GObj* gobj)
@@ -2140,11 +2117,11 @@ void grStadium_801D4548(Ground_GObj* gobj)
                         randi_between_2(yakumono_param->x0, yakumono_param->x4);
                     return;
                 }
-                int sp60[] = { 3, 4, 6, 9 };
-                int idx;
+                int kinds[] = { 3, 4, 6, 9 };
+                int r;
                 do {
-                    idx = HSD_Randi(ARRAY_SIZE(sp60));
-                } while (gp->u.stadium.xE2 == (kind = sp60[idx]));
+                    r = HSD_Randi(ARRAY_SIZE(kinds));
+                } while (gp->u.stadium.xE2 == (kind = kinds[r]));
             } else {
                 kind = 5;
             }
@@ -2332,7 +2309,7 @@ void fn_801D5074(Ground_GObj* gobj, intptr_t arg1)
     grDisplay_801C5DB0(gobj, arg1);
 }
 
-DynamicsDesc* grStadium_OnTouchLine(enum_t unused)
+lbColl_80008D30_arg1* grStadium_OnTouchLine(enum_t unused)
 {
     return NULL;
 }

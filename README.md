@@ -12,7 +12,7 @@ friend with an invite link. Nothing to install. Bring your own copy of the game.
 
 melee-web is built on [melee-pc](https://github.com/999sian/melee-pc), the PC
 port of Melee, and it's the project we contribute back to: fixes that help
-everyone are sent upstream.
+everyone are sent upstream. It currently tracks melee-pc v0.4.2.
 
 This build also makes choices that only make sense on the web, so they stay
 here. The game data is built from your disc ahead of time into a compact

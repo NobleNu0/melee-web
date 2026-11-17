@@ -31,7 +31,10 @@ EXCLUDED = {"axdriver", "synth", "lbaudio_ax", "perf", "video", "vtxarray", "lbm
             # the particle display module, whose counters stamp "matrix built this
             # present" and must not be rewound by a rollback, which renders nothing;
             # the netplay lobby's screen, which is never on screen in a fight.
-            "sislib_font", "psdisp", "mnonlinelobby"}
+            "sislib_font", "psdisp", "mnonlinelobby",
+            # ...and the widescreen mode (src/pc/widescreen.c, compiled with the
+            # game units for its disc-struct read): a display setting.
+            "widescreen"}
 DATA, BSS = b"melee_data", b"melee_bss"
 WASM_SEGMENT_INFO = 5
 

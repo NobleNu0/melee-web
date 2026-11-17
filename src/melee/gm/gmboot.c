@@ -18,26 +18,26 @@
 /* 1BFA3C */ static void memcardOnLoad(GameModeState*);
 
 /// @todo Move to toy header
-enum {
+enum TROPHY {
     TROPHY_PIKMIN = 275,
 };
 
 struct loadData {
     u32 x0;
     u8 x4;
-    u8 mode_id; ///< Copied to ::leaveData::mode_id to set next mode
+    u8 mode_id; ///< Copied to ::BootExitData::mode_id to set next mode
 };
 
-struct leaveData {
+struct BootExitData {
     u32 x0;
     u8 mode_id;
 };
 
 static struct loadData load_data;
-static struct leaveData leave_data;
+static struct BootExitData leave_data;
 
 #ifdef TARGET_PC
-/* MELEE_BOOT_SCENE=<title|vs|classic|training|unranked|direct|ranked>: skip the whole menu walk and
+/* MELEE_BOOT_SCENE=<title|vs|classic|training|credits|unranked|direct|ranked>: skip the whole menu walk and
  * boot into one scene with a fixed setup. Menu navigation here can only be
  * driven by synthetic input, which misses keypresses often enough that an
  * automated run cannot rely on it (see tools/smoke_test.py).
@@ -62,6 +62,8 @@ u8 pc_boot_scene(void)
             scene = GM_DEBUG_VS;
         } else if (strcmp(want, "classic") == 0) {
             scene = GM_CLASSIC;
+        } else if (strcmp(want, "credits") == 0) {
+            scene = GM_CLASSIC_GOVER;
         } else if (strcmp(want, "unranked") == 0) {
             scene = GM_ONLINE;
             gmOnline_SetKind(ONLINE_KIND_UNRANKED);
@@ -73,7 +75,7 @@ u8 pc_boot_scene(void)
             gmOnline_SetKind(ONLINE_KIND_RANKED);
         } else {
             OSReport("MELEE_BOOT_SCENE: unknown scene '%s'; valid values are "
-                     "title, vs, classic, unranked, direct, ranked\n",
+                     "title, vs, classic, credits, unranked, direct, ranked\n",
                      want);
         }
     }
@@ -112,7 +114,7 @@ void bootOnLoad(GameModeState* scene)
 
 void bootOnLeave(GameModeState* data)
 {
-    struct leaveData* scene_data = gm_GetGameModeStateExitData(data);
+    struct BootExitData* scene_data = gm_GetGameModeStateExitData(data);
 
     if (!Toy_803048C0(TROPHY_PIKMIN)) {
         if (!lb_8001C2D8(0, "01",

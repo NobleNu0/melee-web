@@ -30,6 +30,18 @@ jobs:
       - run: python3 tools/check_style.py
       - run: python3 tools/compile_check.py
 
+  engine-unit:
+    name: Engine unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # Upstream's driverless tests of code this build compiles: the browser's
+      # pipeline orchestration and scheduling in aurora, and the credits table.
+      - run: python3 tools/test_browser_pipeline.py
+      - run: python3 tools/test_inline_pipeline.py
+      - run: python3 tools/test_pipeline_scene.py
+      - run: python3 tools/test_staffroll_init.py
+
   web-unit:
     name: Web app unit tests
     runs-on: ubuntu-24.04

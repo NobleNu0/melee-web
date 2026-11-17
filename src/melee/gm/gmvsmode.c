@@ -7,6 +7,7 @@
 #include "forward.h"
 #include "gm_1A3F.h"
 #include "gm_unsplit.h"
+#include "gmapproach.h"
 #include "gmmovieend.h"
 #include "gmresult.h"
 #include "gmvsmelee.h"
@@ -127,7 +128,7 @@ GameModeState gm_Mode_Vs_States[] = {
     { GM_GAMEMODESTATE_TERMINATE },
 };
 
-enum {
+enum state_debug {
     state_debug_vs = 1,
     state_debug_results = 3,
 };
@@ -192,7 +193,7 @@ void onEnterDebugVs(GameModeState* state)
      * (3 is Pokemon Stadium, whose transformations load from disc). */
     if (getenv("MELEE_DEBUG_VS_STAGE") != NULL) {
         int st = atoi(getenv("MELEE_DEBUG_VS_STAGE"));
-        if (st > St_Kind_Test && st < St_Kind_Last) {
+        if (st > St_Kind_Test && st <= St_Kind_Last) {
             start->rules.stkind = (StKind) st;
         }
     }
@@ -204,8 +205,14 @@ void onEnterDebugVs(GameModeState* state)
         static const CharacterKind kinds[4] = {
             CKind_Link, CKind_Mario, CKind_Fox, CKind_Donkey,
         };
+        const char* base_env = getenv("MELEE_DEBUG_VS_FIGHTER_BASE");
+        char* end;
+        long base = base_env ? strtol(base_env, &end, 10) : -1;
+        bool selected = base_env && end != base_env && *end == '\0' &&
+                        base >= 0 && base < CKind_Playable_Count;
         for (i = 0; i < 4; i++) {
-            start->players[i].ckind = kinds[i];
+            start->players[i].ckind = selected ?
+                (CharacterKind) ((base + i) % CKind_Playable_Count) : kinds[i];
             start->players[i].slot_type = Gm_PKind_Cpu;
         }
     }

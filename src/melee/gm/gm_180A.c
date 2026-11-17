@@ -154,8 +154,7 @@ void fn_80180C60(HSD_GObj* gobj)
         HSD_JObjReqAnimAll(jobj, 0.0f);
     } else if (lbl_80472E48.b10) {
         HSD_JObjSetFlagsAll(jobj, JOBJ_HIDDEN);
-    } else if (dist > lbl_80472E48.x14[gm_CKindToSelKind((u8) lbl_80472E48.unk_4)])
-    {
+    } else if (dist > lbl_80472E48.x14[gm_CKindToSelKind((u8) lbl_80472E48.unk_4)]) {
         if (lbl_804D65D4 == 0) {
             lbAudioAx_800237A8(0x9C40, 0x7F, 0x40);
             lbAudioAx_800237A8(0x144, 0x7F, 0x40);

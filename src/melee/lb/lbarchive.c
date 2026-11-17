@@ -40,7 +40,11 @@ static inline void vLoadSections(HSD_Archive* archive, void** symbol,
 {
     const char* symbol_name;
 
-    for (; symbol != NULL; symbol = va_arg(symbols, void**)) {
+    /* PORT: callers end the list with a literal 0, an int: on LP64 the upper
+     * half of the slot va_arg reads as a pointer is not zero (Apple arm64
+     * passes variadics in 8-byte stack slots and leaves it as garbage), so
+     * test the low 32 bits too, as vLoadSectionsFatal and the loop below do. */
+    for (; symbol != NULL && (uint32_t)(uintptr_t)symbol != 0; symbol = va_arg(symbols, void**)) {
         symbol_name = va_arg(symbols, const char*);
         *symbol = NULL;
         *symbol = HSD_ArchiveGetPublicAddress(archive, symbol_name);
@@ -50,7 +54,7 @@ static inline void vLoadSections(HSD_Archive* archive, void** symbol,
     }
 }
 
-void lbArchive_LoadSections(HSD_Archive* archive, void* symbol, ...)
+void(lbArchive_LoadSections)(HSD_Archive* archive, void* symbol, ...)
 {
     va_list symbols;
 
@@ -186,7 +190,7 @@ static inline void lbArchive_vLoadSections(HSD_Archive* archive, void** symbol,
     }
 }
 
-HSD_Archive* lbArchive_LoadSymbols(const char* filename, void* symbols, ...)
+HSD_Archive*(lbArchive_LoadSymbols) (const char* filename, void* symbols, ...)
 {
     va_list sections;
     HSD_Archive* archive;
@@ -200,7 +204,7 @@ HSD_Archive* lbArchive_LoadSymbols(const char* filename, void* symbols, ...)
     return archive;
 }
 
-HSD_Archive* lbArchive_80016DBC(const char* filename, void* symbols, ...)
+HSD_Archive*(lbArchive_80016DBC) (const char* filename, void* symbols, ...)
 {
     va_list sections;
     HSD_Archive* archive;
@@ -240,8 +244,8 @@ bool lbArchive_80016F80(HSD_Archive** dst, const char* filename)
     return preloaded;
 }
 
-bool lbArchive_80017040(HSD_Archive** dst, const char* filename, void* symbols,
-                        ...)
+bool(lbArchive_80017040)(HSD_Archive** dst, const char* filename,
+                         void* symbols, ...)
 {
     HSD_Archive* archive;
     bool preloaded;
@@ -267,8 +271,8 @@ bool lbArchive_80017040(HSD_Archive** dst, const char* filename, void* symbols,
     return preloaded;
 }
 
-bool lbArchive_800171CC(HSD_Archive** dst, const char* filename, void* symbols,
-                        ...)
+bool(lbArchive_800171CC)(HSD_Archive** dst, const char* filename,
+                         void* symbols, ...)
 {
     HSD_Archive* archive;
     bool preloaded;

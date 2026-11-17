@@ -8,6 +8,7 @@ set(AURORA_ENABLE_THP ON CACHE BOOL "" FORCE)
 set(AURORA_ENABLE_RMLUI OFF CACHE BOOL "" FORCE)
 set(AURORA_CACHE_USE_ZSTD OFF CACHE BOOL "" FORCE)
 set(AURORA_SDL3_PROVIDER vendor CACHE STRING "" FORCE)
+set(AURORA_SDL3_LINKAGE static CACHE STRING "" FORCE)
 add_compile_definitions(ENABLE_BACKEND_WEBGPU)
 # -fsigned-char: wasm32's default, stated because the game assumes it (as the
 # GameCube's compiler and upstream's native builds do).
@@ -28,9 +29,11 @@ target_compile_options(aurora_gd PRIVATE ${MELEE_FP_FLAGS})
 # (main.c, dvd.c), stubs the native launcher and file cache (pc_stubs.c), and
 # replaces net_match.c's DHT matchmaking with rooms on the netplay Worker
 # (net_match_web.c, over the page's link, net_web.c). A new src/pc file the
-# game needs goes in this list.
+# game needs goes in this list, unless it reads disc structs: those
+# (vtxarray.c, widescreen.c) are compiled with the game units instead
+# (tools/browser/compile_game.py).
 set(BROWSER_PC_SOURCES
- audio.c discfont.c gcadapter.c gx.c input_poll.c keyboard.c misc.c os.c profile.c region.c stb_vorbis.c thp.c touch.c vi.c widescreen.c
+ audio.c discfont.c gcadapter.c gx.c input_poll.c keyboard.c misc.c os.c profile.c region.c stb_vorbis.c thp.c touch.c vi.c
  android_compat.cpp music_stream.cpp textures.cpp
  net.c net_chat.c net_dht.c net_dht_item.c net_handshake.c net_identity.c net_lan.c net_match_web.c net_rank.c
  net_rank_session.c net_rank_store.c net_reliable.c net_sfx.c net_sim.c net_snapshot.c net_sync.c net_watchdog.c net_web.c net_wire.c
