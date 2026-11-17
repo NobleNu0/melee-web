@@ -157,11 +157,11 @@ export function startControllerView(root, { getGamepads = () => navigator.getGam
       }
     } else {
       if (!current || current.index !== pad.index || current.id !== pad.id) {
-        const kind = isGameCubePad(pad.id) ? 'gamecube' : 'generic';
+        const kind = pad.kind ?? (isGameCubePad(pad.id) ? 'gamecube' : 'generic');
         const { svg, parts } = kind === 'gamecube' ? drawGameCube() : drawGeneric();
         holder.replaceChildren(svg);
         const name = pad.id.replace(/\s*\((?:STANDARD GAMEPAD|XInput STANDARD GAMEPAD)?[^)]*\)\s*$/, '').trim() || 'Controller';
-        title.textContent = `${kind === 'gamecube' ? 'GameCube' : 'Controller'} · ${name}`;
+        title.textContent = `${pad.label ?? (kind === 'gamecube' ? 'GameCube' : 'Controller')} · ${name}`;
         root.dataset.kind = kind;
         current = { index: pad.index, id: pad.id, kind, parts };
       }

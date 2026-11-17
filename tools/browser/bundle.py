@@ -101,8 +101,8 @@ def main():
     # profile draws with, compiled behind "Preparing graphics" on a first visit.
     shutil.copy2(ROOT / 'tools/browser/vs_pipeline_cache.db.gz', out / 'initial_pipeline_cache.db.gz')
     (out / 'initial_pipeline_cache.db').unlink(missing_ok=True)
-    for name in ('app.mjs', 'controller-view.mjs', 'gc-adapter.mjs', 'lzma.mjs', 'lzma.worker.mjs', 'netplay.mjs', 'pak-reader.mjs',
-                 'pak-prefetch.worker.mjs', 'telemetry.mjs', 'serve.py'):
+    for name in ('app.mjs', 'controller-view.mjs', 'gamepads.mjs', 'gc-adapter.mjs', 'lzma.mjs', 'lzma.worker.mjs', 'netplay.mjs', 'pak-reader.mjs',
+                 'pad-ports.mjs', 'pad-setup.mjs', 'pak-prefetch.worker.mjs', 'telemetry.mjs', 'serve.py'):
         shutil.copy2(SOURCES / 'bundle' / name, out / name)
     shutil.copytree(SOURCES / 'bundle/vendor', out / 'vendor', dirs_exist_ok=True)
     # index.html with this build's id (engine hash + pak content id, what a

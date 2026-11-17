@@ -25,6 +25,10 @@
 #include <dolphin/pad.h>
 
 #include "pc/pc.h"
+/* controller.h reaches rumble.h, which names DiscU16; disc.h defines it for
+ * this C TU, which is not force-included with compat.h like the game code. */
+#include "pc/disc.h"
+#include <sysdolphin/baselib/controller.h>
 #include "pc/touch.h"
 
 static bool s_key[SDL_SCANCODE_COUNT];
@@ -195,6 +199,39 @@ static void trace_locked(const PADStatus* st) {
         fifo_held ? 1 : 0);
 }
 
+/* MELEE_INPUT_TRACE=1, the other half: what the game last read on each port,
+ * every source merged (SDL gamepads, the adapter path, keyboard), one line
+ * per change. tests/browser/controllers-e2e.mjs reads these. */
+static void trace_game_pads(void) {
+    static struct {
+        u32 button;
+        s8 axis[4];
+        u8 trigger[2];
+        s8 err;
+    } last[4];
+    for (int i = 0; i < 4; i++) {
+        const HSD_PadStatus* st = &HSD_PadMasterStatus[i];
+        if (last[i].button == st->button && last[i].axis[0] == st->stickX &&
+            last[i].axis[1] == st->stickY && last[i].axis[2] == st->subStickX &&
+            last[i].axis[3] == st->subStickY && last[i].trigger[0] == st->analogL &&
+            last[i].trigger[1] == st->analogR && last[i].err == st->err)
+        {
+            continue;
+        }
+        last[i].button = st->button;
+        last[i].axis[0] = st->stickX;
+        last[i].axis[1] = st->stickY;
+        last[i].axis[2] = st->subStickX;
+        last[i].axis[3] = st->subStickY;
+        last[i].trigger[0] = st->analogL;
+        last[i].trigger[1] = st->analogR;
+        last[i].err = st->err;
+        pc_log_line("game pad %d: btn %04x stick %d,%d sub %d,%d trig %u,%u err %d", i + 1,
+            (unsigned)st->button & 0xffff, st->stickX, st->stickY, st->subStickX, st->subStickY,
+            (unsigned)st->analogL, (unsigned)st->analogR, st->err);
+    }
+}
+
 /* Merge the three sources - polled SDL keyboard state (focus-gated), fifo keys
  * and the latch - into port 0's virtual pad. Call with s_key_mutex held. */
 static void publish_locked(void) {
@@ -351,4 +388,7 @@ void pc_keyboard_apply(void) {
     }
     publish_locked();
     unlock_keys();
+    if (s_trace) {
+        trace_game_pads();
+    }
 }

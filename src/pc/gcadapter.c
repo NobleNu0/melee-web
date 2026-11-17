@@ -18,11 +18,13 @@
  *
  * MELEE_GC_ADAPTER=0 hands the adapter back to SDL's driver.
  *
- * In the browser there is no hidapi: the page reads the adapter through
- * WebHID (platforms/browser/bundle/gc-adapter.mjs) and hands each 0x21 report
- * over through a seqlock'd buffer in shared wasm memory, which the 1000 Hz
- * poll thread drains here; rumble goes back the same way. Everything from
- * parse_slot on is shared.
+ * In the browser there is no hidapi. The page reads the adapter through
+ * WebHID (platforms/browser/bundle/gc-adapter.mjs), and translates gamepads
+ * the browser has no layout for into the same 9 bytes a port
+ * (gamepads.mjs); pad-ports.mjs lays both out as one adapter's report, first
+ * controller on port 1, and writes it to a seqlock'd buffer in wasm memory
+ * each time pc_gcadapter_poll asks, once a frame. Rumble goes back the same
+ * way. Everything from parse_slot on is shared.
  */
 #include "pc/pc.h"
 
@@ -76,6 +78,13 @@ static _Atomic uint32_t s_web_rumble_seq;
 // clang-format off
 EM_JS(void, web_gc_register, (void* report, void* seq, void* rumble, void* rumble_seq, int length), {
   Module.meleeGcAdapter = { buffer: HEAPU8.buffer, report, seq, rumble, rumbleSeq: rumble_seq, length };
+});
+/* The page composes the report on demand (pad-ports.mjs): an adapter's ports
+ * and the gamepads it translates itself, laid out as one adapter's four.
+ * sdl_ports has a bit for each port a controller SDL reads is on, which the
+ * page keeps clear of. */
+EM_JS(void, web_gc_refresh, (int sdl_ports), {
+  if (Module.meleePadRefresh) Module.meleePadRefresh(sdl_ports);
 });
 // clang-format on
 #endif
@@ -387,6 +396,13 @@ void pc_gcadapter_poll(void) {
         return;
     }
 #ifdef __EMSCRIPTEN__
+    int sdl_ports = 0;
+    for (u32 port = 0; port < GC_SLOTS; port++) {
+        if (PADGetIndexForPort(port) >= 0) {
+            sdl_ports |= 1 << port;
+        }
+    }
+    web_gc_refresh(sdl_ports);
     uint8_t report[GC_REPORT];
     const uint32_t seq = atomic_load_explicit(&s_web_seq, memory_order_acquire);
     if (seq == s_web_seen || (seq & 1)) {

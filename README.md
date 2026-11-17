@@ -118,8 +118,35 @@ More options (relays, local testing) are in
 | | |
 |---|---|
 | **Keyboard** | Move: arrows or WASD · C-stick: IJKL · A: X · B: Z · X: C · Y: V · L: Q · R: E · Z: Tab · Start: Enter · D-pad: TFGH |
-| **Gamepad** | Any standard controller (Xbox, PlayStation, Switch Pro) |
-| **GameCube adapter** | Official Wii U/Switch adapter, or a Mayflash in Wii U mode. Click **Connect GameCube adapter** on the page (Chrome and Edge). |
+| **Gamepad** | Xbox, PlayStation, Switch Pro and other controllers the browser recognises: plug in and press a button. |
+| **GameCube controller** | Through an adapter; how depends on the adapter's mode, see below. |
+| **Anything else** | Click **Set up controller** and press each button when asked. The layout is remembered. |
+
+Up to four controllers; the first one you use is player 1. The keyboard is
+always player 1 too.
+
+### GameCube adapters
+
+| Adapter | Chrome, Edge (Windows, macOS, Linux, ChromeOS) | Firefox, Safari, Android |
+|---|---|---|
+| Official Wii U / Switch adapter, or any adapter switched to **Wii U / Switch** | Click **GameCube adapter** once and pick it. The game gets the controller's exact values, and rumble works. | Not available (these browsers cannot open it). Use PC mode if the adapter has it. |
+| Mayflash or a similar adapter switched to **PC** | Press a button on the controller. | Press a button on the controller. |
+| Other adapters and controllers that show up as a plain USB gamepad | **Set up controller**, once. | **Set up controller**, once. |
+
+If **GameCube adapter** finds nothing:
+
+- **Windows:** the adapter must use its normal driver. If you replaced it with
+  Zadig (WinUSB) for Dolphin or Slippi, the browser cannot see it. Uninstall
+  the device in Device Manager with "remove the driver" ticked and replug it,
+  or use an adapter in PC mode.
+- **Linux:** Chrome needs permission for the device. Save
+  `KERNEL=="hidraw*", ATTRS{idVendor}=="057e", ATTRS{idProduct}=="0337", MODE="0660", TAG+="uaccess"`
+  as `/etc/udev/rules.d/51-gcadapter.rules`, run
+  `sudo udevadm control --reload-rules` and replug it.
+- **Everywhere:** plug in the black USB plug (the grey one is only rumble
+  power), and close Dolphin or anything else using the adapter.
+
+The page shows the same help when it cannot connect.
 
 ## Build options
 

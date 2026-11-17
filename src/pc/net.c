@@ -3040,6 +3040,37 @@ static void hitch_test(void) {
     }
 }
 
+#ifdef __EMSCRIPTEN__
+static int abs_s8(s8 v) {
+    return v < 0 ? -(int)v : (int)v;
+}
+
+/* Layer one port's controller onto the local sample: buttons OR, the stick
+ * pushed further wins, the deeper trigger wins (keyboard.c's merge). */
+static void merge_local(PADStatus* into, const PADStatus* pad) {
+    if (pad->err != PAD_ERR_NONE) {
+        return;
+    }
+    if (into->err != PAD_ERR_NONE) {
+        *into = *pad;
+        return;
+    }
+    into->button |= pad->button;
+    if (abs_s8(pad->stickX) > abs_s8(into->stickX))
+        into->stickX = pad->stickX;
+    if (abs_s8(pad->stickY) > abs_s8(into->stickY))
+        into->stickY = pad->stickY;
+    if (abs_s8(pad->substickX) > abs_s8(into->substickX))
+        into->substickX = pad->substickX;
+    if (abs_s8(pad->substickY) > abs_s8(into->substickY))
+        into->substickY = pad->substickY;
+    if (pad->triggerLeft > into->triggerLeft)
+        into->triggerLeft = pad->triggerLeft;
+    if (pad->triggerRight > into->triggerRight)
+        into->triggerRight = pad->triggerRight;
+}
+#endif
+
 /* Read the latest published hardware state immediately before input is
  * sent. Extra time-sync ticks and rollback must reuse their recorded sample;
  * they must never sample hardware a second time. Physical port zero is the
@@ -3049,6 +3080,15 @@ static void capture_local_sample(bool fresh) {
         PADStatus pads[4];
         PADRead(pads);
         s_raw_last = pads[0];
+#ifdef __EMSCRIPTEN__
+        /* A browser has one online player, and which port their controller
+         * landed on depends on what else is plugged in (a pad SDL reads and
+         * one the page translates never share a port). All of them are that
+         * player. */
+        for (int i = 1; i < 4; i++) {
+            merge_local(&s_raw_last, &pads[i]);
+        }
+#endif
     }
 }
 

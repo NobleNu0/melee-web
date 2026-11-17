@@ -85,17 +85,38 @@ It holds game data from your disc, so it is for your own use: do not publish it.
 - The page shows a chip bar above the game: the keyboard controls, and the
   first connected controller drawn live (`bundle/controller-view.mjs`) as a
   GameCube controller or a generic gamepad, each control labelled with the
-  GameCube input aurora maps it to. Character select has no rules header,
+  GameCube input it becomes. Character select has no rules header,
   since the rules are fixed.
-- Input: the keyboard and any controller the browser's Gamepad API exposes
-  with the standard mapping (XInput, Switch Pro, DualShock-class pads) drive
-  port 1 through SDL. The official Wii U / Switch GameCube adapter (WUP-028,
-  or a Mayflash in Wii U mode) is not a Gamepad API device: in Chrome and Edge
-  the page opens it through WebHID (`bundle/gc-adapter.mjs`; "Connect GameCube
-  adapter", once per site) and hands its reports to `src/pc/gcadapter.c`,
-  which reads them exactly as the native build does: raw 8-bit axes, adapter
-  slot N = port N, rumble. On Windows the adapter must still use its HID
-  driver (not WinUSB from Zadig); on Linux Chrome needs hidraw access.
+- Input reaches the game three ways, and the page decides which per
+  controller (`bundle/gamepads.mjs`, `bundle/pad-ports.mjs`):
+  - A gamepad the browser hands over in the **standard mapping** (XInput,
+    Switch Pro, DualShock-class pads) goes to the engine through SDL and
+    aurora's default bindings.
+  - A gamepad it does not (a GameCube adapter in PC mode, a generic USB pad;
+    `mapping` is empty and every device orders its buttons differently) would
+    get SDL's guess. If the page has a **profile** for it, the pad is hidden
+    from SDL (the page replaces `navigator.getGamepads` and filters the
+    connect events) and translated to the 9 bytes one port of the official
+    adapter reports. Profiles are built in for the Mayflash family in PC mode,
+    or made by the player with **Set up controller** (a wizard that asks for
+    each GameCube input and learns which button, axis or hat answers; kept in
+    `localStorage` per device model). Without a profile the pad still plays
+    through SDL and the button asks for the setup.
+  - The official Wii U / Switch adapter (WUP-028, or any adapter in Wii U
+    mode) is not a Gamepad API device: in Chromium browsers the page opens it
+    through WebHID (`bundle/gc-adapter.mjs`; **GameCube adapter**, once per
+    site). On Windows it must still use its HID driver (not WinUSB from
+    Zadig); on Linux Chrome needs hidraw access; the page explains either
+    when the adapter does not connect.
+
+  The last two kinds are laid out as one adapter report, first controller on
+  port 1 whichever socket it is in, and `src/pc/gcadapter.c` reads it as the
+  native build reads the real thing: raw 8-bit axes, origin at the first
+  report, rumble back. The engine asks for the report once per controller
+  read (`Module.meleePadRefresh`) and says which ports SDL's pads hold, so the
+  two groups never share a player. SDL 3.5 treats the first value it hears
+  for an axis as its rest position; the page gives it a first sample a hair
+  off centre so a stick thrown from centre to the edge is not lost.
 - Crash reports: `bundle.py --sentry-dsn DSN` (or `MELEE_SENTRY_DSN`) turns on
   Sentry reporting (`bundle/telemetry.mjs`, the SDK self-hosted in
   `bundle/vendor/`). Engine aborts arrive titled by their PANIC location with
@@ -266,7 +287,8 @@ accident (`ftLib_800876B4`, `gm_801677E8`, `mnCharSel_802640A0`).
 `Module` before loading `melee_browser.js`: `canvas` (its `width` and
 `height` are the render size), `print`/`printErr`, `readDisc(offset, size)`
 returning a `Uint8Array` or a promise of one, and optionally `onFrame(frame)`,
-`onGraphicsPreparation(done, total)` and `onAbort`. Environment variables go
+`onGraphicsPreparation(done, total)`, `onAbort` and `meleePadRefresh(sdlPorts)`
+(called before each controller read; see Input above). Environment variables go
 into `Module.ENV` from `preRun`, which is after Emscripten creates `ENV` and
 before the static constructor that snapshots it. Then the page mounts `/saves`
 and `/cache` and calls `callMain([])`.
@@ -283,6 +305,14 @@ the title opening VS character select), and fails any case below 58.5 fps or
 above a 33.4 ms p99 frame time. Boot-scene cases must also log the scene they
 asked for, so holding 60 fps on the wrong screen cannot pass. `build.py` runs
 the JavaScript unit tests (`platforms/browser/tests`), which CI also runs.
+
+`node tests/browser/controllers-e2e.mjs` (same setup) covers the controller
+paths with simulated devices: a standard pad through SDL, including a stick
+thrown from centre on its very first sample; a Mayflash in PC mode as Chrome
+and as Firefox describe it; the official adapter over WebHID with its
+controller in socket 3; the setup wizard on an unknown pad; and one pad of
+each kind at once. It reads what the game received from `MELEE_INPUT_TRACE=1`.
+Real adapters are not part of it.
 
 Audio does not go through SDL here: `src/pc/audio.c` writes the mix into a
 ring in shared wasm memory and an `AudioWorklet` plays it on the browser's

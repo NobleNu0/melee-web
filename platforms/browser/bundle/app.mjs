@@ -5,7 +5,10 @@
 import { openPak } from './pak-reader.mjs';
 import { checkGraphics } from './gpu-preflight.mjs';
 import { startControllerView } from './controller-view.mjs';
-import { createGcAdapter, webHidAvailable } from './gc-adapter.mjs';
+import { adapterHelp, createGcAdapter } from './gc-adapter.mjs';
+import { installGamepads } from './gamepads.mjs';
+import { createPadPorts } from './pad-ports.mjs';
+import { createPadDialog } from './pad-setup.mjs';
 import { LINK, createNetplay, formatCode, inviteLink, normalizeCode } from './netplay.mjs';
 import {
   reportEngineAbort, reportEngineWarning, reportPageError, setSessionContext, startTelemetry, telemetryDsn,
@@ -52,6 +55,12 @@ function log(text) {
     reportEngineWarning(text.replace(/\(local .*$/, '').trim());
   }
 }
+// Before anything else can ask for gamepads: from here on the engine (SDL) sees
+// only the ones that are not translated on this side (gamepads.mjs).
+let padStorage = null;
+try { padStorage = window.localStorage; } catch { /* storage blocked: layouts last for the visit */ }
+const gamepads = installGamepads({ storage: padStorage, log });
+
 function status(text, { error = false } = {}) {
   $('status').textContent = text;
   $('status').classList.toggle('error', error);
@@ -138,6 +147,8 @@ window.Module = {
   // Netplay's datagram rings (net_web.c) and the matchmaker's calls into the page.
   meleeNetplay: netplay,
   meleeNetLinkReady: () => netplay.attach(Module.meleeNetLink, () => Module._net_web_pump?.()),
+  // Called each frame by src/pc/gcadapter.c for the controllers this page feeds it.
+  meleePadRefresh: (sdlPorts) => padPorts.refresh(sdlPorts),
   // melee_browser.wasm.gz instead of Emscripten's own fetch of the plain file.
   instantiateWasm(imports, done) {
     fetchGzipped('./melee_browser.wasm.gz')
@@ -257,26 +268,55 @@ function toggleFullscreen() {
   $('canvas').focus();
 }
 $('fullscreen').addEventListener('click', toggleFullscreen);
-// The official GameCube adapter (WebHID; Chrome/Edge): the button asks for it
-// once, later visits reconnect it silently.
-const adapter = createGcAdapter({ log, onStatus: () => updateAdapterButton() });
-function updateAdapterButton() {
-  $('gcadapter').hidden = !webHidAvailable() || adapter.connected;
-}
-$('gcadapter').addEventListener('click', () => {
-  adapter.request().catch((error) => log(`GC adapter: ${error.message}`)).finally(() => {
-    updateAdapterButton();
+// Controllers reach the game three ways (see the README's controller table):
+//  - a gamepad the browser knows the layout of goes to the engine through SDL;
+//  - one it does not (a GameCube adapter in PC mode, a generic USB pad) is
+//    translated here, by a built-in profile or one the player makes with
+//    "Set up controller" (gamepads.mjs);
+//  - the official adapter is opened through WebHID with "GameCube adapter",
+//    once; later visits reconnect it silently (gc-adapter.mjs).
+// pad-ports.mjs gives the last two kinds their ports, first controller first.
+const adapter = createGcAdapter({ log, onStatus: () => updatePadTools() });
+const padPorts = createPadPorts({ adapter, gamepads, log });
+const padDialog = createPadDialog($('paddialog'), {
+  gamepads,
+  onClose: () => {
+    updatePadTools();
     $('canvas').focus();
-  });
+  },
 });
-adapter.reconnect().catch((error) => log(`GC adapter: ${error.message}`)).finally(updateAdapterButton);
+function updatePadTools() {
+  $('gcadapter').hidden = adapter.connected;
+  const pads = gamepads.connected();
+  $('padsetup').hidden = !pads.length;
+  // A pad nothing knows the layout of plays with guessed buttons until set up.
+  const unknown = pads.some((pad) => gamepads.needsSetup(pad));
+  $('padsetup').classList.toggle('attn', unknown);
+  $('padsetup').title = unknown
+    ? 'This controller has no known layout, so its buttons are a guess. Set it up to tell the game which is which.'
+    : 'Tell the game which button and stick is which on this controller';
+}
+$('gcadapter').addEventListener('click', async () => {
+  let result = 'none';
+  try {
+    result = await adapter.request();
+  } catch (error) {
+    log(`GC adapter: ${error.message}`);
+  }
+  updatePadTools();
+  if (result === 'connected') $('canvas').focus();
+  else padDialog.help('GameCube adapter', adapterHelp(result, navigator.userAgent));
+});
+$('padsetup').addEventListener('click', () => padDialog.setup());
+adapter.reconnect().catch((error) => log(`GC adapter: ${error.message}`)).finally(updatePadTools);
+setInterval(updatePadTools, 1000);
 
-// The controls and live controller chips above the game; an adapter's pads
-// come first, then the browser's gamepads.
+// The live controller above the game: the ports filled on this side first,
+// then the gamepads SDL reads.
 startControllerView($('pad'), {
   getGamepads: () => [
-    ...[0, 1, 2, 3].map((slot) => adapter.pad(slot)).filter(Boolean),
-    ...(navigator.getGamepads?.() ?? []),
+    ...[0, 1, 2, 3].map((port) => padPorts.pad(port)).filter(Boolean),
+    ...gamepads.passthrough(),
   ],
 });
 
